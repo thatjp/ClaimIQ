@@ -1,9 +1,11 @@
 import { Pool } from 'pg'
 
-const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL,
-  ssl: { rejectUnauthorized: false },
-})
+const connectionString = process.env.POSTGRES_URL
+const ssl = connectionString?.includes('sslmode=require') || connectionString?.includes('neon.tech')
+  ? { rejectUnauthorized: false }
+  : false
+
+const pool = new Pool({ connectionString, ssl })
 
 type QueryResult = { rows: Record<string, unknown>[] }
 
