@@ -109,15 +109,54 @@ export default function ClaimWorkspacePage() {
   async function handleRefreshPrice(item: ClaimItem) {
     setPricingItemId(item.id)
     try {
-      await fetch('/api/price', {
+      const res = await fetch('/api/price', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item }),
       })
+      if (!res.ok) return
+
+      const data = await res.json()
+
+      if (data.price) {
+        setClaim((prev) =>
+          prev
+            ? { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, price: data.price } : i) }
+            : prev
+        )
+        return
+      }
+
+      if (data.workflowRunId) {
+        await pollForPrice(item.id, data.workflowRunId)
+      }
     } catch {
       // ignore
     } finally {
       setPricingItemId(null)
+    }
+  }
+
+  async function pollForPrice(itemId: string, runId: string) {
+    const maxAttempts = 30
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      try {
+        const res = await fetch(`/api/price/${runId}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.status === 'completed' && data.price) {
+          setClaim((prev) =>
+            prev
+              ? { ...prev, items: prev.items.map((i) => i.id === itemId ? { ...i, price: data.price } : i) }
+              : prev
+          )
+          return
+        }
+        if (data.status === 'failed') return
+      } catch {
+        return
+      }
     }
   }
 

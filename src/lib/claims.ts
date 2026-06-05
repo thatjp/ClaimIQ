@@ -68,16 +68,14 @@ const POLICY_RULES: Record<string, Record<string, string>> = {
 
 export async function getClaim(id: string): Promise<Claim | null> {
   try {
-    const { rows: claimRows } = await db`
-      SELECT * FROM claims WHERE id = ${id} LIMIT 1
-    `
+    const [{ rows: claimRows }, { rows: itemRows }] = await Promise.all([
+      db`SELECT * FROM claims WHERE id = ${id} LIMIT 1`,
+      db`SELECT * FROM claim_items WHERE claim_id = ${id} ORDER BY created_at ASC`,
+    ])
+
     if (claimRows.length === 0) return null
 
     const claim = claimRows[0] as Claim
-
-    const { rows: itemRows } = await db`
-      SELECT * FROM claim_items WHERE claim_id = ${id} ORDER BY created_at ASC
-    `
     claim.items = itemRows as ClaimItem[]
     return claim
   } catch {
