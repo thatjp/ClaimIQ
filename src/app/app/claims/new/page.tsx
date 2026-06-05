@@ -111,43 +111,72 @@ export default function NewClaimPage() {
     }
   }
 
+  async function pollForPrice(runId: string): Promise<number | null> {
+    const maxAttempts = 30
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      try {
+        const res = await fetch(`/api/price/${runId}`)
+        if (!res.ok) return null
+        const data = await res.json()
+        if (data.status === 'completed' && data.price) return data.price
+        if (data.status === 'failed') return null
+      } catch {
+        return null
+      }
+    }
+    return null
+  }
+
   async function handlePriceAll() {
     setStep('pricing')
 
     const updatedItems = [...extractedItems]
 
-    for (let i = 0; i < updatedItems.length; i++) {
-      const item = updatedItems[i]
-      try {
-        const res = await fetch('/api/price', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item }),
-        })
-        const data = await res.json()
+    await Promise.all(
+      updatedItems.map(async (item, i) => {
+        try {
+          const res = await fetch('/api/price', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item }),
+          })
+          const data = await res.json()
 
-        if (data.status === 'pending') {
-          updatedItems[i] = { ...item, priceStatus: 'pending', workflowRunId: data.workflowRunId }
-        } else if (data.price) {
-          updatedItems[i] = { ...item, price: data.price, priceStatus: 'found' }
-        } else {
+          if (data.price) {
+            updatedItems[i] = { ...item, price: data.price, priceStatus: 'found' }
+          } else if (data.workflowRunId) {
+            updatedItems[i] = { ...item, priceStatus: 'pending', workflowRunId: data.workflowRunId }
+            setExtractedItems([...updatedItems])
+            const price = await pollForPrice(data.workflowRunId)
+            updatedItems[i] = price
+              ? { ...item, price, priceStatus: 'found' }
+              : { ...item, priceStatus: 'error' }
+          } else {
+            updatedItems[i] = { ...item, priceStatus: 'error' }
+          }
+        } catch {
           updatedItems[i] = { ...item, priceStatus: 'error' }
         }
-
         setExtractedItems([...updatedItems])
-      } catch {
-        updatedItems[i] = { ...item, priceStatus: 'error' }
-        setExtractedItems([...updatedItems])
-      }
-    }
+      })
+    )
 
     setStep('done')
   }
 
-  function handleContinue() {
-    if (claimId) {
-      router.push(`/app/claims/${claimId}`)
+  async function handleContinue() {
+    if (!claimId) return
+    try {
+      await fetch(`/api/claims/${claimId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: extractedItems }),
+      })
+    } catch {
+      // proceed anyway — items can be added in the workspace
     }
+    router.push(`/app/claims/${claimId}`)
   }
 
   if (step === 'extracting') {

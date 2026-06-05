@@ -10,8 +10,8 @@ const gateway = createGateway({
 })
 
 export const MODELS = {
-  extraction: gateway('openai/gpt-4o'),
+  extraction: gateway('openai/gpt-4o-mini'),
   priceNorm: gateway('openai/gpt-4o-mini'),
-  chat: gateway('openai/gpt-4o'),
-  docGen: gateway('openai/gpt-4o'),
+  chat: gateway('openai/gpt-4o-mini'),
+  docGen: gateway('openai/gpt-4o-mini'),
 }
