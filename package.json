@@ -9,8 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.81",
-    "@ai-sdk/openai": "^3.0.68",
     "@ai-sdk/react": "^3.0.199",
     "@ai-sdk/vercel": "^2.0.50",
     "@types/pg": "^8.20.0",
