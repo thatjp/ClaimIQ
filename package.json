@@ -9,9 +9,19 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.68",
+    "@ai-sdk/react": "^3.0.199",
+    "@ai-sdk/vercel": "^2.0.50",
+    "@types/pg": "^8.20.0",
+    "@vercel/blob": "^2.4.0",
+    "@vercel/kv": "^3.0.0",
+    "@vercel/postgres": "^0.10.0",
+    "ai": "^6.0.197",
     "next": "16.2.7",
+    "next-auth": "^4.24.14",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

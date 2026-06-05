@@ -1,0 +1,182 @@
+[
+  {
+    "name": "65-inch Samsung QLED TV",
+    "brand": "Samsung",
+    "model": "QN65Q80C",
+    "condition": "good",
+    "age": 2,
+    "expectedPrice": 1200,
+    "tolerance": 0.20
+  },
+  {
+    "name": "KitchenAid Stand Mixer",
+    "brand": "KitchenAid",
+    "model": "Artisan 5qt",
+    "condition": "good",
+    "age": 3,
+    "expectedPrice": 350,
+    "tolerance": 0.15
+  },
+  {
+    "name": "Apple MacBook Pro 14-inch",
+    "brand": "Apple",
+    "model": "MacBook Pro M2 Pro 14-inch",
+    "condition": "good",
+    "age": 1,
+    "expectedPrice": 1800,
+    "tolerance": 0.15
+  },
+  {
+    "name": "Dyson V15 Vacuum",
+    "brand": "Dyson",
+    "model": "V15 Detect",
+    "condition": "good",
+    "age": 1,
+    "expectedPrice": 550,
+    "tolerance": 0.15
+  },
+  {
+    "name": "Whirlpool Refrigerator French Door",
+    "brand": "Whirlpool",
+    "model": "WRF555SDHZ",
+    "condition": "good",
+    "age": 4,
+    "expectedPrice": 950,
+    "tolerance": 0.20
+  },
+  {
+    "name": "Weber Spirit II Gas Grill",
+    "brand": "Weber",
+    "model": "Spirit II E-310",
+    "condition": "fair",
+    "age": 3,
+    "expectedPrice": 350,
+    "tolerance": 0.20
+  },
+  {
+    "name": "Sony PlayStation 5",
+    "brand": "Sony",
+    "model": "PS5 Disc Edition",
+    "condition": "good",
+    "age": 2,
+    "expectedPrice": 450,
+    "tolerance": 0.10
+  },
+  {
+    "name": "Craftsman Tool Chest",
+    "brand": "Craftsman",
+    "model": "CMST22654RB",
+    "condition": "good",
+    "age": 2,
+    "expectedPrice": 300,
+    "tolerance": 0.20
+  },
+  {
+    "name": "Sectional Sofa",
+    "brand": "Ashley Furniture",
+    "model": "Darcy Sectional",
+    "condition": "good",
+    "age": 3,
+    "expectedPrice": 800,
+    "tolerance": 0.25
+  },
+  {
+    "name": "Breville Espresso Machine",
+    "brand": "Breville",
+    "model": "Barista Express BES870XL",
+    "condition": "good",
+    "age": 2,
+    "expectedPrice": 550,
+    "tolerance": 0.15
+  },
+  {
+    "name": "iPad Pro 12.9-inch",
+    "brand": "Apple",
+    "model": "iPad Pro 12.9-inch M2",
+    "condition": "good",
+    "age": 1,
+    "expectedPrice": 900,
+    "tolerance": 0.15
+  },
+  {
+    "name": "Dewalt Cordless Drill Set",
+    "brand": "Dewalt",
+    "model": "DCK240C2",
+    "condition": "good",
+    "age": 2,
+    "expectedPrice": 160,
+    "tolerance": 0.20
+  },
+  {
+    "name": "LG Washer and Dryer Set",
+    "brand": "LG",
+    "model": "WM4000HWA / DLGX4001W",
+    "condition": "good",
+    "age": 3,
+    "expectedPrice": 1400,
+    "tolerance": 0.20
+  },
+  {
+    "name": "Herman Miller Aeron Chair",
+    "brand": "Herman Miller",
+    "model": "Aeron Size B",
+    "condition": "good",
+    "age": 4,
+    "expectedPrice": 900,
+    "tolerance": 0.20
+  },
+  {
+    "name": "Nikon DSLR Camera",
+    "brand": "Nikon",
+    "model": "D7500",
+    "condition": "good",
+    "age": 3,
+    "expectedPrice": 800,
+    "tolerance": 0.20
+  },
+  {
+    "name": "Trek Mountain Bike",
+    "brand": "Trek",
+    "model": "Marlin 7",
+    "condition": "good",
+    "age": 2,
+    "expectedPrice": 800,
+    "tolerance": 0.20
+  },
+  {
+    "name": "Traeger Wood Pellet Grill",
+    "brand": "Traeger",
+    "model": "Pro 575",
+    "condition": "good",
+    "age": 2,
+    "expectedPrice": 650,
+    "tolerance": 0.20
+  },
+  {
+    "name": "Ring Video Doorbell Pro",
+    "brand": "Ring",
+    "model": "Video Doorbell Pro 2",
+    "condition": "good",
+    "age": 1,
+    "expectedPrice": 200,
+    "tolerance": 0.15
+  },
+  {
+    "name": "Shark Robot Vacuum",
+    "brand": "Shark",
+    "model": "IQ Robot RV1001AE",
+    "condition": "good",
+    "age": 2,
+    "expectedPrice": 280,
+    "tolerance": 0.20
+  },
+  {
+    "name": "Vitamix Blender",
+    "brand": "Vitamix",
+    "model": "E310 Explorian",
+    "condition": "good",
+    "age": 2,
+    "expectedPrice": 350,
+    "tolerance": 0.15
+  }
+]
