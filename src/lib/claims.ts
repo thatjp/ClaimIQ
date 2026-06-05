@@ -75,8 +75,8 @@ export async function getClaim(id: string): Promise<Claim | null> {
 
     if (claimRows.length === 0) return null
 
-    const claim = claimRows[0] as Claim
-    claim.items = itemRows as ClaimItem[]
+    const claim = claimRows[0] as unknown as Claim
+    claim.items = itemRows as unknown as ClaimItem[]
     return claim
   } catch {
     // Return mock data when DB is not connected

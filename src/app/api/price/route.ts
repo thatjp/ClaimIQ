@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       LIMIT 1
     `
 
-    if (rows.length > 0 && rows[0].distance < 0.15) {
+    if (rows.length > 0 && (rows[0].distance as number) < 0.15) {
       return Response.json({ ...rows[0], source: 'vector_cache' })
     }
   } catch {

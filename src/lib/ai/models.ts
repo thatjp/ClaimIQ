@@ -2,11 +2,6 @@ import { createGateway } from '@ai-sdk/gateway'
 
 const gateway = createGateway({
   apiKey: process.env.AI_GATEWAY_API_KEY,
-  providerOptions: {
-    anthropic: {
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    },
-  },
 })
 
 export const MODELS = {
