@@ -8,7 +8,7 @@ import { MODELS } from '@/lib/ai/models'
 async function saveClaimDocument(claimId: string, text: string) {
   try {
     await put(`claims/${claimId}/document.txt`, text, {
-      access: 'public',
+      access: 'private',
       contentType: 'text/plain',
     })
   } catch (error) {

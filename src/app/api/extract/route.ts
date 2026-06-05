@@ -9,8 +9,8 @@ const ItemSchema = z.object({
   items: z.array(
     z.object({
       name: z.string(),
-      brand: z.string().optional(),
-      model: z.string().optional(),
+      brand: z.string().nullable(),
+      model: z.string().nullable(),
       category: z.enum([
         'electronics',
         'appliances',
@@ -21,9 +21,9 @@ const ItemSchema = z.object({
         'other',
       ]),
       condition: z.enum(['new', 'good', 'fair', 'poor']),
-      estimatedAge: z.number().optional(),
-      quantity: z.number().default(1),
-      adjusterNotes: z.string().optional(),
+      estimatedAge: z.number().nullable(),
+      quantity: z.number(),
+      adjusterNotes: z.string().nullable(),
     })
   ),
 })
