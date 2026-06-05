@@ -27,9 +27,9 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  try {
-    const { state, policyType, dateOfLoss } = await req.json()
+  const { state, policyType, dateOfLoss } = await req.json()
 
+  try {
     const { rows } = await db`
       INSERT INTO claims (user_id, state, policy_type, date_of_loss, status)
       VALUES (${session.user.id}, ${state}, ${policyType}, ${dateOfLoss}, 'open')
@@ -38,13 +38,12 @@ export async function POST(req: Request) {
     return Response.json(rows[0], { status: 201 })
   } catch {
     // Return a mock claim when DB is not connected
-    const body = await req.clone().json().catch(() => ({}))
     const mockClaim = {
       id: `mock-${Date.now()}`,
       user_id: session.user.id,
-      state: body?.state || 'CA',
-      policy_type: body?.policyType || 'HO-3',
-      date_of_loss: body?.dateOfLoss || new Date().toISOString().split('T')[0],
+      state: state || 'CA',
+      policy_type: policyType || 'HO-3',
+      date_of_loss: dateOfLoss || new Date().toISOString().split('T')[0],
       status: 'open',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

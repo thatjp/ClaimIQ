@@ -1,9 +1,9 @@
 import { generateObject } from 'ai'
-import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { sanitizeInput } from '@/lib/sanitize'
+import { MODELS } from '@/lib/ai/models'
 
 const ItemSchema = z.object({
   items: z.array(
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     }
 
     const { object } = await generateObject({
-      model: openai('gpt-4o'),
+      model: MODELS.extraction,
       schema: ItemSchema,
       ...(imageBase64
         ? { messages }
