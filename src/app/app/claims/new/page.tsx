@@ -50,7 +50,7 @@ export default function NewClaimPage() {
 
   const [state, setState] = useState('CA')
   const [policyType, setPolicyType] = useState('HO-3')
-  const [dateOfLoss, setDateOfLoss] = useState('')
+  const [dateOfLoss, setDateOfLoss] = useState(new Date().toISOString().split('T')[0])
   const [description, setDescription] = useState('')
   const [imageBase64, setImageBase64] = useState<string | null>(null)
 
