@@ -24,5 +24,9 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/app/:path*', '/api/:path*'],
+  matcher: [
+    '/app/:path*',
+    '/api/:path*',
+    '/((?!.well-known/workflow/).*)',
+  ],
 }

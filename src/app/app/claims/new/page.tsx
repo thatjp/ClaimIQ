@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 const US_STATES = [
@@ -58,6 +58,10 @@ export default function NewClaimPage() {
   const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([])
   const [claimId, setClaimId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -69,6 +73,37 @@ export default function NewClaimPage() {
       setImageBase64(result.split(',')[1])
     }
     reader.readAsDataURL(file)
+  }
+
+  async function startRecording() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+    audioChunksRef.current = []
+    mediaRecorder.ondataavailable = (e) => audioChunksRef.current.push(e.data)
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop())
+      setTranscribing(true)
+      try {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const formData = new FormData()
+        formData.append('audio', blob, 'recording.webm')
+        const res = await fetch('/api/transcribe', { method: 'POST', body: formData })
+        if (res.ok) {
+          const { text } = await res.json()
+          setDescription((prev) => (prev ? prev + ' ' + text : text))
+        }
+      } finally {
+        setTranscribing(false)
+      }
+    }
+    mediaRecorderRef.current = mediaRecorder
+    mediaRecorder.start()
+    setRecording(true)
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop()
+    setRecording(false)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -330,9 +365,26 @@ export default function NewClaimPage() {
           </h2>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Describe damaged or lost items
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Describe damaged or lost items
+              </label>
+              <button
+                type="button"
+                onClick={recording ? stopRecording : startRecording}
+                disabled={transcribing}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  recording
+                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                    : transcribing
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${recording ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} />
+                {recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Record'}
+              </button>
+            </div>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
