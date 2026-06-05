@@ -3,7 +3,8 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 
-const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
+// Transcription requires OpenAI Whisper — not available via Anthropic
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' })
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
