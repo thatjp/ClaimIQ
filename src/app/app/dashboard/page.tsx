@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { db } from '@/lib/db'
 import { StatusBadge } from '@/components/StatusBadge'
+import { DeleteClaimButton } from '@/components/DeleteClaimButton'
 
 interface Claim {
   id: string
@@ -92,12 +93,15 @@ export default async function DashboardPage() {
                     {new Date(claim.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/app/claims/${claim.id}`}
-                      className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                    >
-                      Open
-                    </Link>
+                    <div className="flex items-center justify-end gap-4">
+                      <DeleteClaimButton claimId={claim.id} />
+                      <Link
+                        href={`/app/claims/${claim.id}`}
+                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                      >
+                        Open
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
