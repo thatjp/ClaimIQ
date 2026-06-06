@@ -1,19 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import type { PriceTraceStep } from '@/lib/pricing/trace'
+import { pollForPriceResult, type PriceLookupResponse } from '@/lib/pricing/client'
 import type { ClaimItem } from '@/types/items'
 
 export interface PricingState {
   id: string
-  strategy: string
-}
-
-const STRATEGY_LABELS: Record<string, string> = {
-  cache: 'KV Cache',
-  vector_cache: 'Vector Cache',
-  ebay: 'eBay',
-  web_search: 'Web Search',
-  pending: 'Web Search',
+  trace: PriceTraceStep[]
+  isPolling: boolean
 }
 
 export function useClaimPricing(
@@ -21,61 +16,91 @@ export function useClaimPricing(
   setItems: (updater: (prev: ClaimItem[]) => ClaimItem[]) => void
 ) {
   const [pricingState, setPricingState] = useState<PricingState | null>(null)
-
-  function updateItemPrice(
-    itemId: string,
-    price: number,
-    priceSource: ClaimItem['priceSource'],
-    priceSources?: string[]
-  ) {
-    setItems((prev) =>
-      prev.map((i) => i.id === itemId ? { ...i, price, priceSource, price_sources: priceSources } : i)
-    )
-  }
-
-  async function pollForPrice(itemId: string, runId: string) {
-    const maxAttempts = 30
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const res = await fetch(`/api/price/${runId}`)
-        if (!res.ok) return
-        const data = await res.json()
-        if (data.status === 'completed' && data.price) {
-          updateItemPrice(itemId, data.price, 'web_search', data.sources)
-          return
-        }
-        if (data.status === 'failed') return
-      } catch {
-        return
-      }
-    }
-  }
+  const [replayItemId, setReplayItemId] = useState<string | null>(null)
 
   async function refreshPrice(item: ClaimItem) {
-    setPricingState({ id: item.id, strategy: 'Searching...' })
+    setReplayItemId(null)
+    setPricingState({ id: item.id, trace: [], isPolling: true })
+
     try {
       const res = await fetch('/api/price', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item }),
       })
+
       if (!res.ok) return
-      const data = await res.json()
-      if (data.price) {
-        const label = STRATEGY_LABELS[data.source] ?? data.source
-        setPricingState({ id: item.id, strategy: label })
-        updateItemPrice(item.id, data.price, data.source, data.sources)
-      } else if (data.workflowRunId) {
-        setPricingState({ id: item.id, strategy: STRATEGY_LABELS.web_search })
-        await pollForPrice(item.id, data.workflowRunId)
+
+      const data = (await res.json()) as PriceLookupResponse
+
+      if (data.trace) {
+        setPricingState({
+          id: item.id,
+          trace: data.trace,
+          isPolling: !!data.workflowRunId,
+        })
       }
-    } catch {
-      // ignore
+
+      if (data.price != null && data.source && data.trace) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id
+              ? {
+                  ...i,
+                  price: data.price,
+                  priceSource: data.source,
+                  price_sources: data.sources,
+                  priceTrace: data.trace,
+                }
+              : i
+          )
+        )
+        setReplayItemId(item.id)
+        return
+      }
+
+      if (data.workflowRunId) {
+        const outcome = await pollForPriceResult(
+          data.workflowRunId,
+          data.syncTrace ?? data.trace ?? []
+        )
+
+        setPricingState({ id: item.id, trace: outcome.trace, isPolling: false })
+
+        if (outcome.price != null && outcome.source) {
+          setItems((prev) =>
+            prev.map((i) =>
+              i.id === item.id
+                ? {
+                    ...i,
+                    price: outcome.price,
+                    priceSource: outcome.source,
+                    price_sources: outcome.sources,
+                    priceTrace: outcome.trace,
+                  }
+                : i
+            )
+          )
+          setReplayItemId(item.id)
+        }
+      }
     } finally {
-      setPricingState(null)
+      setTimeout(() => setPricingState(null), 800)
     }
   }
 
-  return { pricingState, refreshPrice }
+  function getTraceForItem(item: ClaimItem): PriceTraceStep[] | undefined {
+    if (pricingState?.id === item.id) return pricingState.trace
+    return item.priceTrace
+  }
+
+  function shouldReplay(item: ClaimItem): boolean {
+    return replayItemId === item.id
+  }
+
+  function isPricing(item: ClaimItem): boolean {
+    return pricingState?.id === item.id
+  }
+
+  return { pricingState, refreshPrice, getTraceForItem, shouldReplay, isPricing }
 }

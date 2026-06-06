@@ -1,12 +1,16 @@
 'use client'
 
 import { ExtractedItem, BLANK_ITEM, CATEGORIES, CONDITIONS } from '@/types/items'
+import type { PriceTraceStep } from '@/lib/pricing/trace'
+import { PriceLookupTrace } from '@/components/claim/PriceLookupTrace'
 
 interface Props {
   items: ExtractedItem[]
   step: 'review' | 'pricing' | 'done'
   addingItem: boolean
   newItem: ExtractedItem
+  pricingTraces?: Record<number, PriceTraceStep[]>
+  replayIndices?: Set<number>
   onRemove: (index: number) => void
   onNewItemChange: (item: ExtractedItem) => void
   onAddConfirm: () => void
@@ -25,6 +29,8 @@ export function ItemReviewTable({
   step,
   addingItem,
   newItem,
+  pricingTraces = {},
+  replayIndices = new Set(),
   onRemove,
   onNewItemChange,
   onAddConfirm,
@@ -48,6 +54,13 @@ export function ItemReviewTable({
                   {item.estimatedAge && <span>{item.estimatedAge}y</span>}
                   <span>Qty {item.quantity}</span>
                 </div>
+                {(item.priceTrace ?? pricingTraces[i]) && (
+                  <PriceLookupTrace
+                    trace={item.priceTrace ?? pricingTraces[i] ?? []}
+                    replay={replayIndices.has(i)}
+                    compact
+                  />
+                )}
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <PriceCell item={item} />
@@ -145,6 +158,13 @@ export function ItemReviewTable({
                     <div className="text-xs text-gray-500">
                       {[item.brand, item.model].filter(Boolean).join(' ')}
                     </div>
+                  )}
+                  {(item.priceTrace ?? pricingTraces[i]) && (
+                    <PriceLookupTrace
+                      trace={item.priceTrace ?? pricingTraces[i] ?? []}
+                      replay={replayIndices.has(i)}
+                      compact
+                    />
                   )}
                 </td>
                 <td className="px-4 py-3 text-gray-700 capitalize">{item.category}</td>

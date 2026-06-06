@@ -27,7 +27,7 @@ export default function ClaimWorkspacePage() {
   const [claim, setClaim] = useState<Claim | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const { pricingState, refreshPrice } = useClaimPricing(
+  const { refreshPrice, getTraceForItem, shouldReplay, isPricing } = useClaimPricing(
     claim?.items ?? [],
     (updater) => setClaim((prev) => prev ? { ...prev, items: updater(prev.items) } : prev)
   )
@@ -69,7 +69,9 @@ export default function ClaimWorkspacePage() {
         <ClaimHeader claim={claim} claimId={claimId} />
         <ClaimItemsTable
           items={claim.items}
-          pricingState={pricingState}
+          getTraceForItem={getTraceForItem}
+          shouldReplay={shouldReplay}
+          isPricing={isPricing}
           onRefreshPrice={(item: ClaimItem) => refreshPrice(item)}
         />
       </div>

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { lookupItemPrice } from '@/lib/pricing/client'
+import type { PriceTraceStep } from '@/lib/pricing/trace'
 import { ExtractedItem } from '@/types/items'
 
 export type ExtractionStep = 'form' | 'extracting' | 'review' | 'pricing' | 'done'
@@ -8,6 +10,8 @@ export type ExtractionStep = 'form' | 'extracting' | 'review' | 'pricing' | 'don
 export function useItemExtraction() {
   const [step, setStep] = useState<ExtractionStep>('form')
   const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([])
+  const [pricingTraces, setPricingTraces] = useState<Record<number, PriceTraceStep[]>>({})
+  const [replayIndices, setReplayIndices] = useState<Set<number>>(new Set())
   const [description, setDescription] = useState('')
   const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -77,46 +81,41 @@ export function useItemExtraction() {
     }
   }
 
-  async function pollForPrice(runId: string): Promise<{ price: number; sources: string[] } | null> {
-    const maxAttempts = 30
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const res = await fetch(`/api/price/${runId}`)
-        if (!res.ok) return null
-        const data = await res.json()
-        if (data.status === 'completed' && data.price) return { price: data.price, sources: data.sources ?? [] }
-        if (data.status === 'failed') return null
-      } catch {
-        return null
-      }
-    }
-    return null
-  }
-
   async function priceAll() {
     setStep('pricing')
+    setReplayIndices(new Set())
     const updatedItems = [...extractedItems]
+
     await Promise.all(
       updatedItems.map(async (item, i) => {
+        updatedItems[i] = { ...item, priceStatus: 'pending' }
+        setExtractedItems([...updatedItems])
+
         try {
-          const res = await fetch('/api/price', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item }),
+          const outcome = await lookupItemPrice({
+            name: item.name,
+            brand: item.brand,
+            model: item.model,
+            category: item.category,
+            condition: item.condition,
+            estimated_age: item.estimatedAge,
+            quantity: item.quantity,
           })
-          const data = await res.json()
-          if (data.price) {
-            updatedItems[i] = { ...item, price: data.price, priceSources: data.sources ?? [], priceStatus: 'found' }
-          } else if (data.workflowRunId) {
-            updatedItems[i] = { ...item, priceStatus: 'pending', workflowRunId: data.workflowRunId }
-            setExtractedItems([...updatedItems])
-            const result = await pollForPrice(data.workflowRunId)
-            updatedItems[i] = result
-              ? { ...item, price: result.price, priceSources: result.sources, priceStatus: 'found' }
-              : { ...item, priceStatus: 'error' }
+
+          setPricingTraces((prev) => ({ ...prev, [i]: outcome.trace }))
+
+          if (outcome.price != null) {
+            updatedItems[i] = {
+              ...item,
+              price: outcome.price,
+              priceSources: outcome.sources ?? [],
+              priceSource: outcome.source,
+              priceTrace: outcome.trace,
+              priceStatus: 'found',
+            }
+            setReplayIndices((prev) => new Set(prev).add(i))
           } else {
-            updatedItems[i] = { ...item, priceStatus: 'error' }
+            updatedItems[i] = { ...item, priceStatus: 'error', priceTrace: outcome.trace }
           }
         } catch {
           updatedItems[i] = { ...item, priceStatus: 'error' }
@@ -132,6 +131,8 @@ export function useItemExtraction() {
     setStep,
     extractedItems,
     setExtractedItems,
+    pricingTraces,
+    replayIndices,
     description,
     setDescription,
     imageBase64,

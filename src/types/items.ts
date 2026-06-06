@@ -1,3 +1,5 @@
+import type { PriceTraceStep } from '@/lib/pricing/trace'
+
 export interface ExtractedItem {
   name: string
   brand?: string
@@ -10,6 +12,8 @@ export interface ExtractedItem {
   price?: number
   priceSources?: string[]
   priceStatus?: 'pending' | 'found' | 'error'
+  priceSource?: ClaimItem['priceSource']
+  priceTrace?: PriceTraceStep[]
   workflowRunId?: string
 }
 
@@ -39,6 +43,7 @@ export interface ClaimItem {
   price?: number
   price_sources?: string[]
   priceSource?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'web_search' | 'estimated'
+  priceTrace?: PriceTraceStep[]
   priceStale?: boolean
   flagged: boolean
   flag_reason?: string

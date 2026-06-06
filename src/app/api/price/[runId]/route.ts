@@ -1,4 +1,12 @@
 import { getRun } from 'workflow/api'
+import { mergePriceTrace, type PriceTraceStep } from '@/lib/pricing/trace'
+
+interface WorkflowResult {
+  price: number
+  sources: string[]
+  source: 'ebay' | 'web_search' | 'estimated'
+  trace?: PriceTraceStep[]
+}
 
 export async function GET(
   _req: Request,
@@ -9,8 +17,14 @@ export async function GET(
   const status = await run.status
 
   if (status === 'completed') {
-    const result = await run.returnValue as { price: number; sources: string[] }
-    return Response.json({ status, price: result.price, sources: result.sources })
+    const result = await run.returnValue as WorkflowResult
+    return Response.json({
+      status,
+      price: result.price,
+      sources: result.sources,
+      source: result.source,
+      workflowTrace: result.trace ?? [],
+    })
   }
 
   if (status === 'failed') {

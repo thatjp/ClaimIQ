@@ -1,5 +1,6 @@
 import type { ClaimItem } from '@/types/items'
-import type { PricingState } from '@/lib/hooks/useClaimPricing'
+import type { PriceTraceStep } from '@/lib/pricing/trace'
+import { PriceLookupTrace } from '@/components/claim/PriceLookupTrace'
 
 function SourceLinks({ sources }: { sources?: string[] | null }) {
   if (!sources || sources.length === 0) return <span className="text-gray-300 text-xs">—</span>
@@ -35,11 +36,41 @@ function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
 
 interface Props {
   items: ClaimItem[]
-  pricingState: PricingState | null
+  getTraceForItem: (item: ClaimItem) => PriceTraceStep[] | undefined
+  shouldReplay: (item: ClaimItem) => boolean
+  isPricing: (item: ClaimItem) => boolean
   onRefreshPrice: (item: ClaimItem) => void
 }
 
-export function ClaimItemsTable({ items, pricingState, onRefreshPrice }: Props) {
+function ItemTraceRow({
+  item,
+  getTraceForItem,
+  shouldReplay,
+  isPricing,
+}: {
+  item: ClaimItem
+  getTraceForItem: Props['getTraceForItem']
+  shouldReplay: Props['shouldReplay']
+  isPricing: Props['isPricing']
+}) {
+  const trace = getTraceForItem(item)
+  if (!trace?.length && !isPricing(item)) return null
+  return (
+    <PriceLookupTrace
+      trace={trace ?? []}
+      replay={shouldReplay(item)}
+      compact
+    />
+  )
+}
+
+export function ClaimItemsTable({
+  items,
+  getTraceForItem,
+  shouldReplay,
+  isPricing,
+  onRefreshPrice,
+}: Props) {
   const total = items.reduce((sum, i) => sum + (i.price || 0) * i.quantity, 0)
 
   return (
@@ -57,16 +88,21 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice }: Props) 
         </div>
       ) : (
         <>
-          {/* Mobile card list */}
           <div className="md:hidden divide-y divide-gray-100">
             {items.map((item) => (
               <div key={item.id} className={`px-4 py-3 ${item.flagged ? 'bg-red-50' : ''}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="font-medium text-gray-900 text-sm truncate">{item.name}</div>
                     {(item.brand || item.model) && (
                       <div className="text-xs text-gray-500">{[item.brand, item.model].filter(Boolean).join(' ')}</div>
                     )}
+                    <ItemTraceRow
+                      item={item}
+                      getTraceForItem={getTraceForItem}
+                      shouldReplay={shouldReplay}
+                      isPricing={isPricing}
+                    />
                     {item.flagged && item.flag_reason && (
                       <div className="text-xs text-red-600 mt-0.5">⚠ {item.flag_reason}</div>
                     )}
@@ -86,14 +122,14 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice }: Props) 
                     {item.price ? (
                       <span className="font-semibold text-gray-900 text-sm">${item.price.toLocaleString()}</span>
                     ) : (
-                      <span className="text-gray-400 text-xs">Pending</span>
+                      <span className="text-gray-400 text-xs">{isPricing(item) ? 'Pricing…' : 'Pending'}</span>
                     )}
                     <button
                       onClick={() => onRefreshPrice(item)}
-                      disabled={pricingState?.id === item.id}
+                      disabled={isPricing(item)}
                       className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
                     >
-                      {pricingState?.id === item.id ? `Pricing via ${pricingState.strategy}...` : 'Refresh'}
+                      {isPricing(item) ? 'Pricing…' : 'Refresh'}
                     </button>
                   </div>
                 </div>
@@ -101,7 +137,6 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice }: Props) 
             ))}
           </div>
 
-          {/* Desktop table */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm min-w-[600px]">
               <thead>
@@ -124,6 +159,12 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice }: Props) 
                       {(item.brand || item.model) && (
                         <div className="text-xs text-gray-500">{[item.brand, item.model].filter(Boolean).join(' ')}</div>
                       )}
+                      <ItemTraceRow
+                        item={item}
+                        getTraceForItem={getTraceForItem}
+                        shouldReplay={shouldReplay}
+                        isPricing={isPricing}
+                      />
                       {item.flagged && item.flag_reason && (
                         <div className="text-xs text-red-600 mt-0.5">Flagged: {item.flag_reason}</div>
                       )}
@@ -138,7 +179,7 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice }: Props) 
                           {item.priceSource && <PriceSourceBadge source={item.priceSource} />}
                         </div>
                       ) : (
-                        <span className="text-gray-400 text-xs">Pending</span>
+                        <span className="text-gray-400 text-xs">{isPricing(item) ? 'Pricing…' : 'Pending'}</span>
                       )}
                     </td>
                     <td className="px-4 py-3"><SourceLinks sources={item.price_sources} /></td>
@@ -150,10 +191,10 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice }: Props) 
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => onRefreshPrice(item)}
-                        disabled={pricingState?.id === item.id}
+                        disabled={isPricing(item)}
                         className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
                       >
-                        {pricingState?.id === item.id ? `Pricing via ${pricingState.strategy}...` : 'Refresh Price'}
+                        {isPricing(item) ? 'Pricing…' : 'Refresh Price'}
                       </button>
                     </td>
                   </tr>

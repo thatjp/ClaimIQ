@@ -20,6 +20,7 @@ export default function NewClaimPage() {
 
   const {
     step, setStep, setExtractedItems, extractedItems,
+    pricingTraces, replayIndices,
     description, setDescription, error,
     recording, transcribing,
     handleImageChange, startRecording, stopRecording, priceAll,
@@ -91,6 +92,8 @@ export default function NewClaimPage() {
           step={step}
           addingItem={addingItem}
           newItem={newItem}
+          pricingTraces={pricingTraces}
+          replayIndices={replayIndices}
           onRemove={(i) => setExtractedItems((prev) => prev.filter((_, idx) => idx !== i))}
           onNewItemChange={setNewItem}
           onAddConfirm={() => {
