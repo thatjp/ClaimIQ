@@ -56,10 +56,10 @@ The document should include:
 7. Adjuster Certification Statement
 
 Format as a professional document ready for submission.`,
+    onFinish: ({ text }) => {
+      void saveClaimDocument(claimId, text)
+    },
   })
-
-  // Save to Vercel Blob asynchronously — don't block the stream
-  void result.text.then((text) => saveClaimDocument(claimId, text))
 
   return result.toTextStreamResponse()
 }

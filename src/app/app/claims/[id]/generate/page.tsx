@@ -13,6 +13,7 @@ export default function GenerateDocumentPage() {
   const { completion, complete, isLoading, error } = useCompletion({
     api: '/api/generate',
     body: { claimId },
+    streamProtocol: 'text',
   })
 
   // Auto-start generation on page load
