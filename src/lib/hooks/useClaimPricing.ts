@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { PriceTraceStep } from '@/lib/pricing/trace'
-import { pollForPriceResult, type PriceLookupResponse } from '@/lib/pricing/client'
+import { lookupItemPrice } from '@/lib/pricing/client'
 import type { ClaimItem } from '@/types/items'
 
 export interface PricingState {
@@ -23,66 +23,33 @@ export function useClaimPricing(
     setPricingState({ id: item.id, trace: [], isPolling: true })
 
     try {
-      const res = await fetch('/api/price', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item }),
+      const outcome = await lookupItemPrice({
+        name: item.name,
+        brand: item.brand,
+        model: item.model,
+        category: item.category,
+        condition: item.condition,
+        estimated_age: item.estimated_age,
+        quantity: item.quantity,
       })
 
-      if (!res.ok) return
+      setPricingState({ id: item.id, trace: outcome.trace, isPolling: false })
 
-      const data = (await res.json()) as PriceLookupResponse
-
-      if (data.trace) {
-        setPricingState({
-          id: item.id,
-          trace: data.trace,
-          isPolling: !!data.workflowRunId,
-        })
-      }
-
-      if (data.price != null && data.source && data.trace) {
+      if (outcome.price != null && outcome.source) {
         setItems((prev) =>
           prev.map((i) =>
             i.id === item.id
               ? {
                   ...i,
-                  price: data.price,
-                  priceSource: data.source,
-                  price_sources: data.sources,
-                  priceTrace: data.trace,
+                  price: outcome.price,
+                  priceSource: outcome.source,
+                  price_sources: outcome.sources,
+                  priceTrace: outcome.trace,
                 }
               : i
           )
         )
         setReplayItemId(item.id)
-        return
-      }
-
-      if (data.workflowRunId) {
-        const outcome = await pollForPriceResult(
-          data.workflowRunId,
-          data.syncTrace ?? data.trace ?? []
-        )
-
-        setPricingState({ id: item.id, trace: outcome.trace, isPolling: false })
-
-        if (outcome.price != null && outcome.source) {
-          setItems((prev) =>
-            prev.map((i) =>
-              i.id === item.id
-                ? {
-                    ...i,
-                    price: outcome.price,
-                    priceSource: outcome.source,
-                    price_sources: outcome.sources,
-                    priceTrace: outcome.trace,
-                  }
-                : i
-            )
-          )
-          setReplayItemId(item.id)
-        }
       }
     } finally {
       setTimeout(() => setPricingState(null), 800)

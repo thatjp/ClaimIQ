@@ -86,45 +86,47 @@ export function useItemExtraction() {
     setReplayIndices(new Set())
     const updatedItems = [...extractedItems]
 
-    await Promise.all(
-      updatedItems.map(async (item, i) => {
-        updatedItems[i] = { ...item, priceStatus: 'pending' }
-        setExtractedItems([...updatedItems])
+    for (let i = 0; i < updatedItems.length; i++) {
+      const item = updatedItems[i]
+      updatedItems[i] = { ...item, priceStatus: 'pending' }
+      setExtractedItems([...updatedItems])
 
-        try {
-          const outcome = await lookupItemPrice({
-            name: item.name,
-            brand: item.brand,
-            model: item.model,
-            category: item.category,
-            condition: item.condition,
-            estimated_age: item.estimatedAge,
-            quantity: item.quantity,
-          })
+      try {
+        const outcome = await lookupItemPrice({
+          name: item.name,
+          brand: item.brand,
+          model: item.model,
+          category: item.category,
+          condition: item.condition,
+          estimated_age: item.estimatedAge,
+          quantity: item.quantity,
+        })
 
-          setPricingTraces((prev) => ({ ...prev, [i]: outcome.trace }))
+        setPricingTraces((prev) => ({ ...prev, [i]: outcome.trace }))
 
-          if (outcome.price != null) {
-            updatedItems[i] = {
-              ...item,
-              price: outcome.price,
-              priceSources: outcome.sources ?? [],
-              priceSource: outcome.source,
-              priceTrace: outcome.trace,
-              priceStatus: 'found',
-            }
-            setReplayIndices((prev) => new Set(prev).add(i))
-          } else {
-            updatedItems[i] = { ...item, priceStatus: 'error', priceTrace: outcome.trace }
+        if (outcome.price != null) {
+          updatedItems[i] = {
+            ...item,
+            price: outcome.price,
+            priceSources: outcome.sources ?? [],
+            priceSource: outcome.source,
+            priceTrace: outcome.trace,
+            priceStatus: 'found',
           }
-        } catch {
-          updatedItems[i] = { ...item, priceStatus: 'error' }
+          setReplayIndices((prev) => new Set(prev).add(i))
+        } else {
+          updatedItems[i] = { ...item, priceStatus: 'error', priceTrace: outcome.trace }
         }
-        setExtractedItems([...updatedItems])
-      })
-    )
+      } catch {
+        updatedItems[i] = { ...item, priceStatus: 'error' }
+      }
+      setExtractedItems([...updatedItems])
+    }
     setStep('done')
   }
+
+  const isPricingInProgress =
+    step === 'pricing' || extractedItems.some((item) => item.priceStatus === 'pending')
 
   return {
     step,
@@ -144,5 +146,6 @@ export function useItemExtraction() {
     stopRecording,
     extract,
     priceAll,
+    isPricingInProgress,
   }
 }

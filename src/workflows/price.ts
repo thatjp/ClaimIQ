@@ -252,5 +252,6 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
   // Layer 3c: AI estimation — no live data available, model reasons from training knowledge
   const estimate = await estimatePrice(item)
   workflowTrace.push(traceStep('estimated', 'hit', estimate.durationMs, estimate.detail))
+  await cachePrice(item, estimate.value!.price, [])
   return { price: estimate.value!.price, sources: [], source: 'estimated' as const, trace: workflowTrace }
 }

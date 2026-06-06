@@ -19,7 +19,7 @@ export default function AddItemsPage() {
     description, setDescription, error,
     recording, transcribing,
     handleImageChange, startRecording, stopRecording,
-    extract, priceAll,
+    extract, priceAll, isPricingInProgress,
   } = useItemExtraction()
 
   async function handleExtract(e: React.FormEvent) {
@@ -98,12 +98,16 @@ export default function AddItemsPage() {
           )}
           <button
             onClick={handleSave}
-            disabled={extractedItems.length === 0}
-            className="bg-gray-800 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors"
+            disabled={extractedItems.length === 0 || isPricingInProgress}
+            title={isPricingInProgress ? 'Wait for pricing to finish' : undefined}
+            className="bg-gray-800 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Save to Claim
           </button>
         </div>
+        {isPricingInProgress && (
+          <p className="text-sm text-amber-700 mt-3">Pricing in progress — wait for all items to finish before saving.</p>
+        )}
       </div>
     )
   }

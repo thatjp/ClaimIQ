@@ -14,7 +14,7 @@ function log(layer: string, hit: boolean, durationMs: number, meta?: Record<stri
 }
 
 export async function POST(req: Request) {
-  const { item } = await req.json()
+  const { item, cacheOnly } = await req.json()
 
   if (!item || !item.name || !item.condition) {
     return Response.json({ error: 'item.name and item.condition are required' }, { status: 400 })
@@ -109,6 +109,10 @@ export async function POST(req: Request) {
     const message = err instanceof Error ? err.message : String(err)
     console.warn('[price] pgvector search unavailable:', message)
     syncTrace.push(traceStep('vector_cache', 'error', undefined, message))
+  }
+
+  if (cacheOnly) {
+    return Response.json({ status: 'miss', syncTrace, trace: syncTrace })
   }
 
   // Layer 3: Trigger Workflow for eBay / web search
