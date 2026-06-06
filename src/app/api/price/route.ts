@@ -1,19 +1,9 @@
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
 import { kv } from '@/lib/kv'
 import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
 import { triggerPriceWorkflow } from '@/lib/workflow'
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  // TODO: Add rate limiting here — web search is expensive and should be throttled
-  // e.g., 10 requests per adjuster per minute using KV-based sliding window
-
   const { item } = await req.json()
 
   if (!item || !item.name || !item.condition) {

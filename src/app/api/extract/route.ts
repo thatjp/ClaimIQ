@@ -1,7 +1,5 @@
 import { generateObject } from 'ai'
 import { z } from 'zod'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
 import { sanitizeInput } from '@/lib/sanitize'
 import { MODELS } from '@/lib/ai/models'
 
@@ -29,11 +27,6 @@ const ItemSchema = z.object({
 })
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
     const { text, imageBase64 } = await req.json()
     const sanitizedText = sanitizeInput(text || '')

@@ -1,16 +1,9 @@
 import { getRun } from 'workflow/api'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ runId: string }> }
 ) {
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   const { runId } = await params
   const run = getRun(runId)
   const status = await run.status

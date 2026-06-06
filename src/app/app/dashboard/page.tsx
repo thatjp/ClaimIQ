@@ -1,6 +1,5 @@
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
 import Link from 'next/link'
+import { db } from '@/lib/db'
 
 interface Claim {
   id: string
@@ -11,15 +10,14 @@ interface Claim {
   created_at: string
 }
 
-async function getClaims(userId: string): Promise<Claim[]> {
+async function getClaims(): Promise<Claim[]> {
   try {
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
-    const res = await fetch(`${baseUrl}/api/claims`, {
-      headers: { Cookie: '' }, // Will be handled by server-side call
-      cache: 'no-store',
-    })
-    if (!res.ok) return []
-    return res.json()
+    const { rows } = await db`
+      SELECT * FROM claims
+      WHERE user_id = 'demo'
+      ORDER BY created_at DESC
+    `
+    return rows as unknown as Claim[]
   } catch {
     return []
   }
@@ -39,8 +37,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions)
-  const claims = await getClaims(session?.user?.id || '')
+  const claims = await getClaims()
 
   return (
     <div className="p-8">
@@ -80,24 +77,12 @@ export default async function DashboardPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Claim ID
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  State
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Policy Type
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Date of Loss
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Status
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Created
-                </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Claim ID</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">State</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Policy Type</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Date of Loss</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Created</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>

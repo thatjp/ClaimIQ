@@ -1,7 +1,5 @@
 import { streamText } from 'ai'
 import { put } from '@vercel/blob'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
 import { getClaim } from '@/lib/claims'
 import { MODELS } from '@/lib/ai/models'
 
@@ -17,11 +15,6 @@ async function saveClaimDocument(claimId: string, text: string) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   const { claimId } = await req.json()
 
   if (!claimId) {

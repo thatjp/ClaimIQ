@@ -19,6 +19,7 @@ interface ClaimItem {
   adjuster_notes?: string
   price?: number
   price_sources?: string[]
+  priceSource?: 'cache' | 'vector_cache' | 'web_search'
   flagged: boolean
   flag_reason?: string
 }
@@ -45,6 +46,23 @@ function StatusBadge({ status }: { status: string }) {
     >
       {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
+  )
+}
+
+function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
+  const config = {
+    cache: { label: 'KV Cache', className: 'text-blue-600', title: 'Exact match from Redis cache (7-day TTL)' },
+    vector_cache: { label: 'Vector Cache', className: 'text-purple-600', title: 'Semantic match from pgvector similarity search (90-day TTL)' },
+    web_search: { label: 'Live Web Search', className: 'text-green-600', title: 'Retrieved via Anthropic web search tool through Vercel Workflow' },
+  }
+  const c = config[source!]
+  return (
+    <div className={`text-xs mt-0.5 font-medium ${c.className}`} title={c.title}>
+      {source === 'cache' && '⚡ '}
+      {source === 'vector_cache' && '🔮 '}
+      {source === 'web_search' && '🌐 '}
+      {c.label}
+    </div>
   )
 }
 
@@ -106,6 +124,14 @@ export default function ClaimWorkspacePage() {
     loadClaim()
   }, [claimId])
 
+  function updateItemPrice(itemId: string, price: number, priceSource: ClaimItem['priceSource']) {
+    setClaim((prev) =>
+      prev
+        ? { ...prev, items: prev.items.map((i) => i.id === itemId ? { ...i, price, priceSource } : i) }
+        : prev
+    )
+  }
+
   async function handleRefreshPrice(item: ClaimItem) {
     setPricingItemId(item.id)
     try {
@@ -119,11 +145,7 @@ export default function ClaimWorkspacePage() {
       const data = await res.json()
 
       if (data.price) {
-        setClaim((prev) =>
-          prev
-            ? { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, price: data.price } : i) }
-            : prev
-        )
+        updateItemPrice(item.id, data.price, data.source)
         return
       }
 
@@ -146,11 +168,7 @@ export default function ClaimWorkspacePage() {
         if (!res.ok) return
         const data = await res.json()
         if (data.status === 'completed' && data.price) {
-          setClaim((prev) =>
-            prev
-              ? { ...prev, items: prev.items.map((i) => i.id === itemId ? { ...i, price: data.price } : i) }
-              : prev
-          )
+          updateItemPrice(itemId, data.price, 'web_search')
           return
         }
         if (data.status === 'failed') return
@@ -214,12 +232,26 @@ export default function ClaimWorkspacePage() {
               </span>
             </div>
           </div>
-          <Link
-            href={`/app/claims/${claimId}/generate`}
-            className="bg-gray-800 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-900 transition-colors"
-          >
-            Generate Document
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              href="/app/dashboard"
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              All Claims
+            </Link>
+            <Link
+              href={`/app/claims/${claimId}/add-items`}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              + Add Items
+            </Link>
+            <Link
+              href={`/app/claims/${claimId}/generate`}
+              className="bg-gray-800 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-900 transition-colors"
+            >
+              Generate Document
+            </Link>
+          </div>
         </div>
 
         {/* Items table */}
@@ -287,9 +319,14 @@ export default function ClaimWorkspacePage() {
                     <td className="px-4 py-3 text-gray-700">{item.quantity}</td>
                     <td className="px-4 py-3">
                       {item.price ? (
-                        <span className="font-medium text-gray-900">
-                          ${item.price.toLocaleString()}
-                        </span>
+                        <div>
+                          <span className="font-medium text-gray-900">
+                            ${item.price.toLocaleString()}
+                          </span>
+                          {item.priceSource && (
+                            <PriceSourceBadge source={item.priceSource} />
+                          )}
+                        </div>
                       ) : (
                         <span className="text-gray-400 text-xs">Pending</span>
                       )}

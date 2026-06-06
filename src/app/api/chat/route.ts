@@ -1,18 +1,11 @@
 import { streamText, tool, convertToModelMessages } from 'ai'
 import { z } from 'zod'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
 import { getClaim, flagClaimItem, getPolicyRules } from '@/lib/claims'
 import { triggerPriceWorkflow } from '@/lib/workflow'
 import { MODELS } from '@/lib/ai/models'
 import { sanitizeInput } from '@/lib/sanitize'
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   const { messages, claimId } = await req.json()
 
   if (!claimId) {
@@ -30,7 +23,6 @@ export async function POST(req: Request) {
     claim.regionalRules ||
     'Standard HO-3 policy rules apply.'
 
-  // Convert UI messages to model messages, sanitizing text content
   const modelMessages = await convertToModelMessages(messages)
   const sanitizedMessages = modelMessages.map((m) => {
     if (m.role === 'user' && typeof m.content === 'string') {
@@ -56,11 +48,7 @@ When checking policy rules, cite the relevant statute or regulation.`,
         description: 'Flag a claim item as needing review or investigation',
         inputSchema: z.object({
           itemId: z.string().describe('The ID of the claim item to flag'),
-          reason: z
-            .string()
-            .describe(
-              'The specific reason for flagging — must be defensible and precise'
-            ),
+          reason: z.string().describe('The specific reason for flagging — must be defensible and precise'),
         }),
         execute: async ({ itemId, reason }: { itemId: string; reason: string }) => {
           return flagClaimItem(claimId, itemId, reason)
@@ -69,30 +57,19 @@ When checking policy rules, cite the relevant statute or regulation.`,
       refreshPrice: tool({
         description: 'Trigger a fresh price lookup for a claim item',
         inputSchema: z.object({
-          itemId: z
-            .string()
-            .describe('The ID of the claim item to refresh pricing for'),
+          itemId: z.string().describe('The ID of the claim item to refresh pricing for'),
         }),
         execute: async ({ itemId }: { itemId: string }) => {
           const item = claim.items.find((i) => i.id === itemId)
-          if (!item) {
-            return { error: 'Item not found' }
-          }
+          if (!item) return { error: 'Item not found' }
           return triggerPriceWorkflow(item)
         },
       }),
       checkPolicy: tool({
-        description:
-          'Look up policy coverage rules for a specific item category in a given state',
+        description: 'Look up policy coverage rules for a specific item category in a given state',
         inputSchema: z.object({
-          category: z
-            .string()
-            .describe(
-              'Item category (electronics, furniture, jewelry, appliances, clothing, tools, other)'
-            ),
-          state: z
-            .string()
-            .describe('Two-letter US state code (e.g., CA, FL, TX)'),
+          category: z.string().describe('Item category (electronics, furniture, jewelry, appliances, clothing, tools, other)'),
+          state: z.string().describe('Two-letter US state code (e.g., CA, FL, TX)'),
         }),
         execute: async ({ category, state }: { category: string; state: string }) => {
           const rules = await getPolicyRules(category, state)
