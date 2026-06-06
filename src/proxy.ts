@@ -9,7 +9,7 @@ const STATE_RULES: Record<string, string> = {
   'US-IL': 'Illinois: Insurance Code Section 154.6. Standard HO-3 policy rules apply.',
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const country = request.headers.get('x-vercel-ip-country') || 'US'
   const region = request.headers.get('x-vercel-ip-region') || ''
   const regionKey = `${country}-${region}`
