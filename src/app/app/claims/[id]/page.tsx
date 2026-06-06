@@ -27,7 +27,7 @@ export default function ClaimWorkspacePage() {
   const [claim, setClaim] = useState<Claim | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const { pricingItemId, refreshPrice } = useClaimPricing(
+  const { pricingState, refreshPrice } = useClaimPricing(
     claim?.items ?? [],
     (updater) => setClaim((prev) => prev ? { ...prev, items: updater(prev.items) } : prev)
   )
@@ -64,12 +64,12 @@ export default function ClaimWorkspacePage() {
   }
 
   return (
-    <div className="flex h-full">
-      <div className="flex-1 overflow-auto p-8">
+    <div className="flex flex-col md:flex-row h-full">
+      <div className="flex-1 overflow-auto p-4 md:p-8">
         <ClaimHeader claim={claim} claimId={claimId} />
         <ClaimItemsTable
           items={claim.items}
-          pricingItemId={pricingItemId}
+          pricingState={pricingState}
           onRefreshPrice={(item: ClaimItem) => refreshPrice(item)}
         />
       </div>

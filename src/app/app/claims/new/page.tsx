@@ -79,7 +79,7 @@ export default function NewClaimPage() {
 
   if (step === 'review' || step === 'pricing' || step === 'done') {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <h1 className="text-2xl font-semibold text-gray-900 mb-2">Review Extracted Items</h1>
         <p className="text-sm text-gray-500 mb-6">
           {extractedItems.length} item{extractedItems.length !== 1 ? 's' : ''} extracted from your description.
@@ -102,11 +102,11 @@ export default function NewClaimPage() {
           onAddCancel={() => { setAddingItem(false); setNewItem(BLANK_ITEM) }}
         />
 
-        <div className="flex gap-3 flex-wrap">
+        <div className="flex flex-col sm:flex-row gap-3">
           {step === 'review' && !addingItem && (
             <button
               onClick={() => setAddingItem(true)}
-              className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+              className="w-full sm:w-auto border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
             >
               + Add Item
             </button>
@@ -115,19 +115,19 @@ export default function NewClaimPage() {
             <button
               onClick={priceAll}
               disabled={extractedItems.length === 0}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
               Price All Items
             </button>
           )}
           {step === 'pricing' && (
-            <button disabled className="bg-blue-400 text-white px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed">
+            <button disabled className="w-full sm:w-auto bg-blue-400 text-white px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed">
               Pricing items...
             </button>
           )}
           <button
             onClick={handleContinue}
-            className="bg-gray-800 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-900 transition-colors"
+            className="w-full sm:w-auto bg-gray-800 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-900 transition-colors"
           >
             Continue to Claim Workspace
           </button>
@@ -137,7 +137,7 @@ export default function NewClaimPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">New Claim</h1>
 
       <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">

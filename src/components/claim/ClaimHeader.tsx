@@ -16,15 +16,15 @@ interface Props {
 
 export function ClaimHeader({ claim, claimId }: Props) {
   return (
-    <div className="flex items-start justify-between mb-6">
+    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
       <div>
         <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="text-lg md:text-xl font-semibold text-gray-900">
             Claim {claim.id.slice(0, 8)}
           </h1>
           <StatusBadge status={claim.status} />
         </div>
-        <div className="flex gap-4 text-sm text-gray-500">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
           <span>State: <span className="text-gray-700 font-medium">{claim.state}</span></span>
           <span>Policy: <span className="text-gray-700 font-medium">{claim.policy_type}</span></span>
           <span>
@@ -35,22 +35,22 @@ export function ClaimHeader({ claim, claimId }: Props) {
           </span>
         </div>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Link
           href="/app/dashboard"
-          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+          className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-xs md:text-sm font-medium hover:bg-gray-50 transition-colors"
         >
           All Claims
         </Link>
         <Link
           href={`/app/claims/${claimId}/add-items`}
-          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+          className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-xs md:text-sm font-medium hover:bg-gray-50 transition-colors"
         >
           + Add Items
         </Link>
         <Link
           href={`/app/claims/${claimId}/generate`}
-          className="bg-gray-800 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-900 transition-colors"
+          className="bg-gray-800 text-white px-3 py-1.5 rounded-md text-xs md:text-sm font-medium hover:bg-gray-900 transition-colors"
         >
           Generate Document
         </Link>

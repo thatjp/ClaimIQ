@@ -51,7 +51,7 @@ export default function AddItemsPage() {
 
   if (step === 'review' || step === 'pricing' || step === 'done') {
     return (
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <h1 className="text-2xl font-semibold text-gray-900 mb-2">Review New Items</h1>
         <p className="text-sm text-gray-500 mb-6">
           {extractedItems.length} item{extractedItems.length !== 1 ? 's' : ''} extracted. Add, remove, or price before saving to the claim.

@@ -3,11 +3,23 @@
 import { useState } from 'react'
 import type { ClaimItem } from '@/types/items'
 
+export interface PricingState {
+  id: string
+  strategy: string
+}
+
+const STRATEGY_LABELS: Record<string, string> = {
+  cache: 'KV Cache',
+  vector_cache: 'Vector Cache',
+  web_search: 'Web Search',
+  pending: 'Web Search',
+}
+
 export function useClaimPricing(
   items: ClaimItem[],
   setItems: (updater: (prev: ClaimItem[]) => ClaimItem[]) => void
 ) {
-  const [pricingItemId, setPricingItemId] = useState<string | null>(null)
+  const [pricingState, setPricingState] = useState<PricingState | null>(null)
 
   function updateItemPrice(
     itemId: string,
@@ -40,7 +52,7 @@ export function useClaimPricing(
   }
 
   async function refreshPrice(item: ClaimItem) {
-    setPricingItemId(item.id)
+    setPricingState({ id: item.id, strategy: 'Searching...' })
     try {
       const res = await fetch('/api/price', {
         method: 'POST',
@@ -50,16 +62,19 @@ export function useClaimPricing(
       if (!res.ok) return
       const data = await res.json()
       if (data.price) {
+        const label = STRATEGY_LABELS[data.source] ?? data.source
+        setPricingState({ id: item.id, strategy: label })
         updateItemPrice(item.id, data.price, data.source, data.sources)
       } else if (data.workflowRunId) {
+        setPricingState({ id: item.id, strategy: STRATEGY_LABELS.web_search })
         await pollForPrice(item.id, data.workflowRunId)
       }
     } catch {
       // ignore
     } finally {
-      setPricingItemId(null)
+      setPricingState(null)
     }
   }
 
-  return { pricingItemId, refreshPrice }
+  return { pricingState, refreshPrice }
 }
