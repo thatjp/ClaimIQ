@@ -16,20 +16,19 @@ function SourceLinks({ sources }: { sources?: string[] | null }) {
 }
 
 function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
-  const config = {
-    cache:        { label: 'KV Cache',        className: 'text-blue-600',   title: 'Exact match from Redis cache (7-day TTL)' },
-    vector_cache: { label: 'Vector Cache',    className: 'text-purple-600', title: 'Semantic match from pgvector similarity search (90-day TTL)' },
-    ebay:         { label: 'eBay Sold',       className: 'text-yellow-600', title: 'Average of recent sold listings via eBay Finding API' },
-    web_search:   { label: 'Live Web Search', className: 'text-green-600',  title: 'Retrieved via Anthropic web search tool through Vercel Workflow' },
+  const config: Record<string, { label: string; className: string; title: string; icon: string }> = {
+    cache:               { label: 'KV Cache',         className: 'text-blue-600',   icon: '⚡', title: 'Exact match from Redis cache (7-day TTL)' },
+    vector_cache:        { label: 'Vector Cache',     className: 'text-purple-600', icon: '🔮', title: 'Semantic match from pgvector similarity search (90-day TTL)' },
+    vector_cache_stale:  { label: 'Stale Cache',      className: 'text-orange-500', icon: '⏳', title: 'Semantic match older than 90 days — may not reflect current market price' },
+    ebay:                { label: 'eBay Sold',        className: 'text-yellow-600', icon: '🛒', title: 'Average of recent sold listings via eBay Finding API' },
+    web_search:          { label: 'Live Web Search',  className: 'text-green-600',  icon: '🌐', title: 'Retrieved via Anthropic web search tool through Vercel Workflow' },
+    estimated:           { label: 'AI Estimate',      className: 'text-gray-500',   icon: '🤖', title: 'Estimated by AI model — live pricing was unavailable. Review before use.' },
   }
   const c = config[source!]
+  if (!c) return null
   return (
     <div className={`text-xs mt-0.5 font-medium ${c.className}`} title={c.title}>
-      {source === 'cache' && '⚡ '}
-      {source === 'vector_cache' && '🔮 '}
-      {source === 'ebay' && '🛒 '}
-      {source === 'web_search' && '🌐 '}
-      {c.label}
+      {c.icon} {c.label}
     </div>
   )
 }
