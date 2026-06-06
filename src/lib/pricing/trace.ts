@@ -2,6 +2,7 @@ export type PriceLayer =
   | 'kv_cache'
   | 'vector_cache'
   | 'ebay'
+  | 'amazon'
   | 'web_search'
   | 'estimated'
 
@@ -19,6 +20,7 @@ export const PRICE_LADDER: { layer: PriceLayer; label: string }[] = [
   { layer: 'kv_cache', label: 'Exact cache' },
   { layer: 'vector_cache', label: 'Similar items' },
   { layer: 'ebay', label: 'eBay sold' },
+  { layer: 'amazon', label: 'Amazon' },
   { layer: 'web_search', label: 'Web search' },
   { layer: 'estimated', label: 'AI estimate' },
 ]
@@ -65,13 +67,14 @@ export function pendingWorkflowTrace(syncTrace: PriceTraceStep[]): PriceTraceSte
   const syncLayers = new Set(syncTrace.map((s) => s.layer))
   const asyncSteps: PriceTraceStep[] = [
     traceStep('ebay', 'running'),
+    traceStep('amazon', 'pending'),
     traceStep('web_search', 'pending'),
     traceStep('estimated', 'pending'),
   ]
   return [...syncTrace, ...asyncSteps.filter((s) => !syncLayers.has(s.layer))]
 }
 
-const ASYNC_LAYERS: PriceLayer[] = ['ebay', 'web_search', 'estimated']
+const ASYNC_LAYERS: PriceLayer[] = ['ebay', 'amazon', 'web_search', 'estimated']
 
 /** Build ladder UI state while a workflow is in progress (completed steps + active running layer). */
 export function buildLivePriceTrace(

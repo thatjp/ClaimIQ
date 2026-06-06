@@ -57,6 +57,12 @@ interface WebSearchResult {
   source: 'web_search'
 }
 
+interface AmazonResult {
+  price: number
+  sources: string[]
+  source: 'amazon'
+}
+
 async function lookupEbay(item: ClaimItemInput): Promise<StepOutcome<EbayResult>> {
   'use step'
 
@@ -121,6 +127,164 @@ async function lookupEbay(item: ClaimItemInput): Promise<StepOutcome<EbayResult>
     log('ebay', false, durationMs, { error: err instanceof Error ? err.message : String(err) })
     return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
   }
+}
+
+async function lookupAmazon(item: ClaimItemInput): Promise<StepOutcome<AmazonResult>> {
+  'use step'
+
+  const schema = z.object({
+    price: z.number().describe('Current retail replacement cost in USD on Amazon'),
+    sources: z
+      .array(z.string().url())
+      .min(1)
+      .describe('Amazon product listing URLs (amazon.com) where this item can be purchased'),
+  })
+
+  const t0 = performance.now()
+  try {
+    const { experimental_output, steps } = await generateText({
+      model: MODELS.priceSearch,
+      experimental_output: Output.object({ schema }),
+      tools: { webSearch: anthropic.tools.webSearch_20260209({ maxUses: 4 }) },
+      stopWhen: stepCountIs(4),
+      prompt: `You are an insurance pricing assistant. Search Amazon (amazon.com) for the current retail replacement cost of this item.
+
+Item: ${item.name}
+Brand: ${item.brand || 'unknown'}
+Model: ${item.model || 'unknown'}
+Condition: ${item.condition}
+Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
+Category: ${item.category || 'unknown'}
+
+Search ONLY on amazon.com — find the closest matching new or like-new retail listing.
+Return the price in USD and at least one amazon.com product URL from your search results.
+Do NOT estimate — only return a price you found on Amazon.`,
+    })
+
+    const durationMs = stepElapsed(t0)
+    const sources = (experimental_output?.sources ?? []).filter((url) =>
+      url.includes('amazon.com')
+    )
+    const hit = !!experimental_output?.price && sources.length > 0
+
+    log('amazon', hit, durationMs, {
+      item: item.name,
+      category: item.category,
+      searchSteps: steps.length,
+      price: experimental_output?.price,
+    })
+
+    if (!hit) {
+      return {
+        value: null,
+        durationMs,
+        detail: sources.length ? 'no price on Amazon' : 'no Amazon listings',
+      }
+    }
+
+    return {
+      value: {
+        price: experimental_output!.price,
+        sources,
+        source: 'amazon' as const,
+      },
+      durationMs,
+      detail: `${sources.length} listing${sources.length === 1 ? '' : 's'}`,
+    }
+  } catch (err) {
+    const durationMs = stepElapsed(t0)
+    log('amazon', false, durationMs, {
+      item: item.name,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+async function lookupPriceFromSource(
+  item: ClaimItemInput,
+  sourceUrl: string
+): Promise<StepOutcome<{ price: number; sources: string[]; source: 'web_search' }>> {
+  'use step'
+
+  const schema = z.object({
+    price: z.number().describe('Current retail replacement cost in USD from this listing'),
+    sourceUrl: z
+      .string()
+      .url()
+      .describe('Product listing URL where the price was found'),
+  })
+
+  const t0 = performance.now()
+  try {
+    const { experimental_output } = await generateText({
+      model: MODELS.priceSearch,
+      experimental_output: Output.object({ schema }),
+      tools: { webSearch: anthropic.tools.webSearch_20260209({ maxUses: 3 }) },
+      stopWhen: stepCountIs(3),
+      prompt: `You are an insurance pricing assistant. Look up the current retail replacement price for this item using ONLY this source URL:
+
+Source URL: ${sourceUrl}
+
+Item: ${item.name}
+Brand: ${item.brand || 'unknown'}
+Model: ${item.model || 'unknown'}
+Condition: ${item.condition}
+Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
+Category: ${item.category || 'unknown'}
+
+Search this exact page or the same retailer's product listing for this item.
+Return the price in USD and the URL where you found it.
+Do NOT estimate — only return a price you found on this site.`,
+    })
+
+    const durationMs = stepElapsed(t0)
+    const hit = !!experimental_output?.price
+
+    log('web_search', hit, durationMs, {
+      item: item.name,
+      mode: 'source_refresh',
+      sourceUrl,
+      price: experimental_output?.price,
+    })
+
+    if (!hit) {
+      return { value: null, durationMs, detail: 'no price on claim source' }
+    }
+
+    return {
+      value: {
+        price: experimental_output!.price,
+        sources: [experimental_output!.sourceUrl],
+        source: 'web_search' as const,
+      },
+      durationMs,
+      detail: new URL(sourceUrl).hostname,
+    }
+  } catch (err) {
+    const durationMs = stepElapsed(t0)
+    log('web_search', false, durationMs, {
+      item: item.name,
+      mode: 'source_refresh',
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+function mergeClaimSources(
+  claimSources: string[] | undefined,
+  primaryUrl: string,
+  foundUrl?: string
+): string[] {
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  for (const url of [primaryUrl, foundUrl, ...(claimSources ?? [])]) {
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    ordered.push(url)
+  }
+  return ordered
 }
 
 async function lookupPrice(item: ClaimItemInput): Promise<StepOutcome<WebSearchResult>> {
@@ -243,6 +407,39 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
   const workflowTrace: PriceTraceStep[] = []
   const traceKey = item.traceKey
 
+  if (item.refreshFromSource) {
+    await publishLiveTrace(traceKey, workflowTrace, 'web_search')
+    const sourceResult = await lookupPriceFromSource(item, item.refreshFromSource)
+    if (sourceResult.value) {
+      workflowTrace.push(
+        traceStep(
+          'web_search',
+          'hit',
+          sourceResult.durationMs,
+          `Claim source: ${sourceResult.detail}`
+        )
+      )
+      await publishLiveTrace(traceKey, workflowTrace)
+      const sources = mergeClaimSources(
+        item.priceSources,
+        item.refreshFromSource,
+        sourceResult.value.sources[0]
+      )
+      await cachePrice(item, sourceResult.value.price, sources)
+      return {
+        price: sourceResult.value.price,
+        sources,
+        source: 'web_search' as const,
+        trace: workflowTrace,
+      }
+    }
+    workflowTrace.push(
+      traceStep('web_search', 'miss', sourceResult.durationMs, sourceResult.detail)
+    )
+    await publishLiveTrace(traceKey, workflowTrace)
+    throw new Error(sourceResult.detail ?? 'Could not refresh price from claim source')
+  }
+
   // Layer 3a: eBay sold listings (structured API, actual market prices)
   const ebay = await lookupEbay(item)
   if (ebay.value) {
@@ -252,9 +449,25 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
     return { price: ebay.value.price, sources: ebay.value.sources, source: 'ebay' as const, trace: workflowTrace }
   }
   workflowTrace.push(traceStep('ebay', 'miss', ebay.durationMs, ebay.detail))
+  await publishLiveTrace(traceKey, workflowTrace, 'amazon')
+
+  // Layer 3b: Amazon retail search (web search scoped to amazon.com)
+  const amazon = await lookupAmazon(item)
+  if (amazon.value) {
+    workflowTrace.push(traceStep('amazon', 'hit', amazon.durationMs, amazon.detail))
+    await publishLiveTrace(traceKey, workflowTrace)
+    await cachePrice(item, amazon.value.price, amazon.value.sources)
+    return {
+      price: amazon.value.price,
+      sources: amazon.value.sources,
+      source: 'amazon' as const,
+      trace: workflowTrace,
+    }
+  }
+  workflowTrace.push(traceStep('amazon', 'miss', amazon.durationMs, amazon.detail))
   await publishLiveTrace(traceKey, workflowTrace, 'web_search')
 
-  // Layer 3b: Anthropic web search (with AI Gateway model fallback)
+  // Layer 3c: Anthropic web search (category-preferred retailers)
   const webResult = await lookupPrice(item)
   if (webResult.value) {
     workflowTrace.push(traceStep('web_search', 'hit', webResult.durationMs, webResult.detail))
@@ -270,7 +483,7 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
   workflowTrace.push(traceStep('web_search', 'miss', webResult.durationMs, webResult.detail))
   await publishLiveTrace(traceKey, workflowTrace, 'estimated')
 
-  // Layer 3c: AI estimation — no live data available, model reasons from training knowledge
+  // Layer 3d: AI estimation — no live data available, model reasons from training knowledge
   const estimate = await estimatePrice(item)
   workflowTrace.push(traceStep('estimated', 'hit', estimate.durationMs, estimate.detail))
   await publishLiveTrace(traceKey, workflowTrace)

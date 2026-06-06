@@ -22,8 +22,42 @@ export async function POST(req: Request) {
     return Response.json({ error: 'item.name and item.condition are required' }, { status: 400 })
   }
 
+  const refreshFromSource =
+    typeof item.refreshFromSource === 'string' && item.refreshFromSource.trim()
+      ? item.refreshFromSource.trim()
+      : undefined
+
   const itemKey = { name: item.name, brand: item.brand || '', condition: item.condition, category: item.category || '' }
   const syncTrace: PriceTraceStep[] = []
+
+  if (refreshFromSource) {
+    syncTrace.push(traceStep('kv_cache', 'skipped', undefined, 'source refresh'))
+    syncTrace.push(traceStep('vector_cache', 'skipped', undefined, 'source refresh'))
+
+    if (cacheOnly) {
+      return Response.json({ status: 'miss', syncTrace, trace: syncTrace })
+    }
+
+    const workflowItem = {
+      ...item,
+      refreshFromSource,
+      priceSources: item.priceSources ?? item.price_sources,
+    }
+    const traceKey = randomUUID()
+    const t0 = performance.now()
+    const { workflowRunId } = await triggerPriceWorkflow(workflowItem, traceKey)
+    const triggerMs = Math.round(performance.now() - t0)
+    log('workflow_trigger', true, triggerMs, { ...itemKey, workflowRunId, traceKey, mode: 'source_refresh' })
+
+    try {
+      await initLiveTrace(traceKey, workflowRunId, syncTrace)
+    } catch (err) {
+      console.warn('[price] Failed to init live trace:', err instanceof Error ? err.message : err)
+    }
+
+    const trace = buildLivePriceTrace(syncTrace, [], 'web_search')
+    return Response.json({ status: 'pending', workflowRunId, syncTrace, trace })
+  }
 
   // Layer 1: KV exact cache (7-day TTL)
   try {

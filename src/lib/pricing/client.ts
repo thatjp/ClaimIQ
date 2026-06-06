@@ -3,8 +3,15 @@ import type { ClaimItem } from '@/types/items'
 
 export type PriceLookupItem = Pick<
   ClaimItem,
-  'name' | 'brand' | 'model' | 'category' | 'condition' | 'estimated_age' | 'quantity'
+  'name' | 'brand' | 'model' | 'category' | 'condition' | 'estimated_age' | 'quantity' | 'price_sources'
 >
+
+export interface PriceLookupOptions {
+  /** Called whenever the pipeline trace updates (initial pending state + each poll tick). */
+  onTraceUpdate?: (trace: PriceTraceStep[]) => void
+  /** Refresh using the first claim source URL instead of the full price ladder. */
+  refreshFromSources?: boolean
+}
 
 export interface PriceLookupResponse {
   price?: number
@@ -34,11 +41,6 @@ export interface PriceLookupOutcome {
   error?: boolean
 }
 
-export interface PriceLookupOptions {
-  /** Called whenever the pipeline trace updates (initial pending state + each poll tick). */
-  onTraceUpdate?: (trace: PriceTraceStep[]) => void
-}
-
 const DEFAULT_POLL_ATTEMPTS = 60
 const DEFAULT_POLL_INTERVAL_MS = 3000
 
@@ -46,7 +48,11 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-function toRequestItem(item: PriceLookupItem) {
+function toRequestItem(item: PriceLookupItem, options?: PriceLookupOptions) {
+  const firstSource = item.price_sources?.[0]
+  const refreshFromSource =
+    options?.refreshFromSources && firstSource ? firstSource : undefined
+
   return {
     name: item.name,
     brand: item.brand,
@@ -55,6 +61,8 @@ function toRequestItem(item: PriceLookupItem) {
     condition: item.condition,
     estimatedAge: item.estimated_age,
     quantity: item.quantity,
+    priceSources: item.price_sources,
+    refreshFromSource,
   }
 }
 
@@ -75,12 +83,16 @@ function emitTraceUpdate(
   if (trace?.length) options?.onTraceUpdate?.(trace)
 }
 
-async function postPriceLookup(item: PriceLookupItem, cacheOnly = false): Promise<PriceLookupResponse | null> {
+async function postPriceLookup(
+  item: PriceLookupItem,
+  options?: PriceLookupOptions,
+  cacheOnly = false
+): Promise<PriceLookupResponse | null> {
   try {
     const res = await fetch('/api/price', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item: toRequestItem(item), cacheOnly }),
+      body: JSON.stringify({ item: toRequestItem(item, options), cacheOnly }),
     })
     if (!res.ok) return null
     return (await res.json()) as PriceLookupResponse
@@ -91,9 +103,10 @@ async function postPriceLookup(item: PriceLookupItem, cacheOnly = false): Promis
 
 /** Re-check KV/vector cache after workflow poll timeout or failure. */
 async function fallbackPriceFromCache(
-  item: PriceLookupItem
+  item: PriceLookupItem,
+  options?: PriceLookupOptions
 ): Promise<PriceLookupOutcome | null> {
-  const data = await postPriceLookup(item, true)
+  const data = await postPriceLookup(item, options, true)
   if (!data) return null
 
   // Only accept a sync hit — never re-trigger workflow
@@ -154,8 +167,8 @@ export async function pollForPriceResult(
     }
   }
 
-  if (item && !options?.skipCacheFallback) {
-    const cached = await fallbackPriceFromCache(item)
+  if (item && !options?.skipCacheFallback && !options?.refreshFromSources) {
+    const cached = await fallbackPriceFromCache(item, options)
     if (cached) {
       emitTraceUpdate(options, cached.trace)
       return cached
@@ -169,7 +182,7 @@ export async function lookupItemPrice(
   item: PriceLookupItem,
   options?: PriceLookupOptions
 ): Promise<PriceLookupOutcome> {
-  const data = await postPriceLookup(item)
+  const data = await postPriceLookup(item, options)
   if (!data) return { trace: [], error: true }
 
   emitTraceUpdate(options, data.trace)

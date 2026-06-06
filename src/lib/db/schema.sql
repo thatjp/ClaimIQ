@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS claim_items (
   price NUMERIC,
   price_sources JSONB,
   price_cached_at TIMESTAMPTZ,
+  approved BOOLEAN NOT NULL DEFAULT FALSE,
+  approved_at TIMESTAMPTZ,
   flagged BOOLEAN NOT NULL DEFAULT FALSE,
   flag_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

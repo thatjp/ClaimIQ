@@ -5,7 +5,7 @@ import { mergePriceTrace, type PriceTraceStep } from '@/lib/pricing/trace'
 interface WorkflowResult {
   price: number
   sources: string[]
-  source: 'ebay' | 'web_search' | 'estimated'
+  source: 'ebay' | 'amazon' | 'web_search' | 'estimated'
   trace?: PriceTraceStep[]
 }
 

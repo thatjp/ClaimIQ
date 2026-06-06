@@ -1,14 +1,17 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { useEffect, useRef } from 'react'
 import { useCompletion } from '@ai-sdk/react'
 import Link from 'next/link'
+import { getClaimReadiness } from '@/lib/claims/grounding'
+import type { Claim } from '@/types/items'
 
 export default function GenerateDocumentPage() {
   const params = useParams()
   const claimId = params.id as string
   const hasStarted = useRef(false)
+  const [blocked, setBlocked] = useState<string | null>(null)
 
   const { completion, complete, isLoading, error } = useCompletion({
     api: '/api/generate',
@@ -16,13 +19,32 @@ export default function GenerateDocumentPage() {
     streamProtocol: 'text',
   })
 
-  // Auto-start generation on page load
   useEffect(() => {
-    if (!hasStarted.current) {
+    async function startGeneration() {
+      if (hasStarted.current) return
       hasStarted.current = true
+
+      try {
+        const res = await fetch(`/api/claims/${claimId}`)
+        if (res.ok) {
+          const claim = (await res.json()) as Claim
+          const readiness = getClaimReadiness(claim.items)
+          if (!readiness.canGenerateDocument) {
+            setBlocked(
+              'All line items must be approved with price, age, and source URL before generating a document.'
+            )
+            return
+          }
+        }
+      } catch {
+        // proceed — server will enforce
+      }
+
       complete('')
     }
-  }, [complete])
+
+    startGeneration()
+  }, [claimId, complete])
 
   function handleExport() {
     const blob = new Blob([completion], { type: 'text/plain' })
@@ -60,6 +82,18 @@ export default function GenerateDocumentPage() {
           )}
         </div>
       </div>
+
+      {blocked && (
+        <div className="bg-amber-50 border border-amber-200 rounded-md px-4 py-3 mb-4">
+          <p className="text-sm text-amber-800">{blocked}</p>
+          <Link
+            href={`/app/claims/${claimId}`}
+            className="text-sm text-amber-900 font-medium mt-1 inline-block hover:underline"
+          >
+            Return to claim to approve items
+          </Link>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-md px-4 py-3 mb-4">

@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { StatusBadge } from '@/components/StatusBadge'
+import { getClaimReadiness } from '@/lib/claims/grounding'
+import type { ClaimItem } from '@/types/items'
 
 interface Claim {
   id: string
@@ -7,6 +9,7 @@ interface Claim {
   policy_type: string
   date_of_loss: string
   status: string
+  items?: ClaimItem[]
 }
 
 interface Props {
@@ -15,6 +18,10 @@ interface Props {
 }
 
 export function ClaimHeader({ claim, claimId }: Props) {
+  const items = claim.items ?? []
+  const readiness = getClaimReadiness(items)
+  const canGenerate = readiness.canGenerateDocument
+
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
       <div>
@@ -34,6 +41,13 @@ export function ClaimHeader({ claim, claimId }: Props) {
             </span>
           </span>
         </div>
+        {items.length > 0 && (
+          <p className={`text-xs mt-2 ${canGenerate ? 'text-green-700' : 'text-amber-700'}`}>
+            {canGenerate
+              ? `All ${items.length} items approved and grounded — ready to generate document`
+              : `${readiness.approvedCount} of ${items.length} items approved — each line needs price, age, source URL, and approval`}
+          </p>
+        )}
       </div>
       <div className="flex flex-wrap gap-2">
         <Link
@@ -48,12 +62,21 @@ export function ClaimHeader({ claim, claimId }: Props) {
         >
           + Add Items
         </Link>
-        <Link
-          href={`/app/claims/${claimId}/generate`}
-          className="bg-gray-800 text-white px-3 py-1.5 rounded-md text-xs md:text-sm font-medium hover:bg-gray-900 transition-colors"
-        >
-          Generate Document
-        </Link>
+        {canGenerate ? (
+          <Link
+            href={`/app/claims/${claimId}/generate`}
+            className="bg-gray-800 text-white px-3 py-1.5 rounded-md text-xs md:text-sm font-medium hover:bg-gray-900 transition-colors"
+          >
+            Generate Document
+          </Link>
+        ) : (
+          <span
+            title="Approve every line item with price, age, and source URL first"
+            className="bg-gray-300 text-gray-500 px-3 py-1.5 rounded-md text-xs md:text-sm font-medium cursor-not-allowed"
+          >
+            Generate Document
+          </span>
+        )}
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import { streamText } from 'ai'
 import { put } from '@vercel/blob'
 import { getClaim } from '@/lib/claims'
+import { getClaimReadiness } from '@/lib/claims/grounding'
 import { MODELS, gatewayProviderOptions } from '@/lib/ai/models'
 
 async function saveClaimDocument(claimId: string, text: string) {
@@ -26,6 +27,19 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Claim not found' }, { status: 404 })
   }
 
+  const readiness = getClaimReadiness(claim.items)
+  if (!readiness.canGenerateDocument) {
+    return Response.json(
+      {
+        error: 'All line items must be approved with price, age, and source URL before generating a document',
+        readiness,
+      },
+      { status: 422 }
+    )
+  }
+
+  const approvedItems = claim.items.filter((item) => item.approved)
+
   const regionalRules =
     req.headers.get('x-claim-rules') || 'Standard HO-3 policy rules apply.'
 
@@ -40,9 +54,10 @@ Flag any items without a price source with [UNSOURCED - REQUIRES VERIFICATION].
 Use standard insurance industry formatting with dollar amounts, dates, and policy references.
 Be conservative and accurate — this document has legal standing.
 Regional rules: ${regionalRules}`,
-    prompt: `Generate a complete, professional insurance claim document for the following claim data:
+    prompt: `Generate a complete, professional insurance claim document for the following claim data.
+Only include these approved, grounded line items:
 
-${JSON.stringify(claim, null, 2)}
+${JSON.stringify({ ...claim, items: approvedItems }, null, 2)}
 
 The document should include:
 1. Claim Summary (claim ID, date of loss, policy type, state, adjuster)

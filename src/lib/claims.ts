@@ -14,6 +14,8 @@ export interface ClaimItem {
   price?: number
   price_sources?: string[]
   price_cached_at?: string
+  approved?: boolean
+  approved_at?: string
   flagged: boolean
   flag_reason?: string
   created_at: string
@@ -66,6 +68,99 @@ const POLICY_RULES: Record<string, Record<string, string>> = {
   },
 }
 
+function parseJsonArray(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) return value as string[]
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? parsed : undefined
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
+}
+
+export function normalizeClaimItem(row: ClaimItem): ClaimItem {
+  return {
+    ...row,
+    price_sources: parseJsonArray(row.price_sources) ?? row.price_sources,
+    approved: row.approved ?? false,
+    estimated_age:
+      row.estimated_age != null ? Number(row.estimated_age) : undefined,
+    price: row.price != null ? Number(row.price) : undefined,
+  }
+}
+
+export interface UpdateClaimItemInput {
+  estimated_age?: number | null
+  price_sources?: string[]
+  price?: number | null
+  approved?: boolean
+}
+
+export async function updateClaimItem(
+  claimId: string,
+  itemId: string,
+  updates: UpdateClaimItemInput
+): Promise<{ item: ClaimItem | null; error?: string }> {
+  if (Object.keys(updates).length === 0) {
+    return { item: null, error: 'No updates provided' }
+  }
+
+  try {
+    const [{ rows: claimRows }, { rows: itemRows }] = await Promise.all([
+      db`SELECT id FROM claims WHERE id = ${claimId} LIMIT 1`,
+      db`SELECT * FROM claim_items WHERE id = ${itemId} AND claim_id = ${claimId} LIMIT 1`,
+    ])
+
+    if (claimRows.length === 0 || itemRows.length === 0) {
+      return { item: null, error: 'Item not found' }
+    }
+
+    const existing = normalizeClaimItem(itemRows[0] as unknown as ClaimItem)
+    const merged: ClaimItem = {
+      ...existing,
+      estimated_age:
+        'estimated_age' in updates ? (updates.estimated_age ?? undefined) : existing.estimated_age,
+      price_sources:
+        'price_sources' in updates ? updates.price_sources : existing.price_sources,
+      price: 'price' in updates ? (updates.price ?? undefined) : existing.price,
+      approved: 'approved' in updates ? !!updates.approved : existing.approved,
+    }
+
+    if (updates.approved === true) {
+      const { canApproveItem } = await import('@/lib/claims/grounding')
+      if (!canApproveItem(merged)) {
+        return { item: null, error: 'Item is missing required source URL, age, or price' }
+      }
+    }
+
+    const approvedAt = merged.approved ? new Date().toISOString() : null
+    const priceSourcesJson = merged.price_sources?.length
+      ? JSON.stringify(merged.price_sources)
+      : null
+
+    const { rows } = await db`
+      UPDATE claim_items
+      SET
+        estimated_age = ${merged.estimated_age ?? null},
+        price_sources = ${priceSourcesJson},
+        price = ${merged.price ?? null},
+        approved = ${merged.approved ?? false},
+        approved_at = ${approvedAt}
+      WHERE id = ${itemId} AND claim_id = ${claimId}
+      RETURNING *
+    `
+
+    if (rows.length === 0) return { item: null, error: 'Item not found' }
+    return { item: normalizeClaimItem(rows[0] as unknown as ClaimItem) }
+  } catch (err) {
+    console.error('Failed to update claim item:', err)
+    return { item: null, error: 'Failed to update item' }
+  }
+}
+
 export async function getClaim(id: string): Promise<Claim | null> {
   try {
     const [{ rows: claimRows }, { rows: itemRows }] = await Promise.all([
@@ -76,7 +171,7 @@ export async function getClaim(id: string): Promise<Claim | null> {
     if (claimRows.length === 0) return null
 
     const claim = claimRows[0] as unknown as Claim
-    claim.items = itemRows as unknown as ClaimItem[]
+    claim.items = (itemRows as unknown as ClaimItem[]).map(normalizeClaimItem)
     return claim
   } catch {
     // Return mock data when DB is not connected
