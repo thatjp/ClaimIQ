@@ -9,8 +9,15 @@ export function useClaimPricing(
 ) {
   const [pricingItemId, setPricingItemId] = useState<string | null>(null)
 
-  function updateItemPrice(itemId: string, price: number, priceSource: ClaimItem['priceSource']) {
-    setItems((prev) => prev.map((i) => i.id === itemId ? { ...i, price, priceSource } : i))
+  function updateItemPrice(
+    itemId: string,
+    price: number,
+    priceSource: ClaimItem['priceSource'],
+    priceSources?: string[]
+  ) {
+    setItems((prev) =>
+      prev.map((i) => i.id === itemId ? { ...i, price, priceSource, price_sources: priceSources } : i)
+    )
   }
 
   async function pollForPrice(itemId: string, runId: string) {
@@ -22,7 +29,7 @@ export function useClaimPricing(
         if (!res.ok) return
         const data = await res.json()
         if (data.status === 'completed' && data.price) {
-          updateItemPrice(itemId, data.price, 'web_search')
+          updateItemPrice(itemId, data.price, 'web_search', data.sources)
           return
         }
         if (data.status === 'failed') return
@@ -43,7 +50,7 @@ export function useClaimPricing(
       if (!res.ok) return
       const data = await res.json()
       if (data.price) {
-        updateItemPrice(item.id, data.price, data.source)
+        updateItemPrice(item.id, data.price, data.source, data.sources)
       } else if (data.workflowRunId) {
         await pollForPrice(item.id, data.workflowRunId)
       }

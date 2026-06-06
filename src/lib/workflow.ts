@@ -6,6 +6,7 @@ export interface ClaimItemInput {
   name: string
   brand?: string
   model?: string
+  category?: string
   condition: string
   estimatedAge?: number
   quantity?: number

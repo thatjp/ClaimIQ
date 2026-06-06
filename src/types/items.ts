@@ -8,6 +8,7 @@ export interface ExtractedItem {
   quantity: number
   adjusterNotes?: string
   price?: number
+  priceSources?: string[]
   priceStatus?: 'pending' | 'found' | 'error'
   workflowRunId?: string
 }

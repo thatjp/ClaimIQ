@@ -1,5 +1,28 @@
 import type { ClaimItem } from '@/types/items'
 
+function SourceLinks({ sources }: { sources?: string[] | null }) {
+  if (!sources || sources.length === 0) return <span className="text-gray-300 text-xs">—</span>
+
+  const [first, ...rest] = sources
+  const domain = new URL(first).hostname.replace('www.', '')
+
+  return (
+    <div className="text-xs">
+      <a
+        href={first}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 hover:underline"
+      >
+        {domain} ↗
+      </a>
+      {rest.length > 0 && (
+        <span className="text-gray-400 ml-1">+{rest.length}</span>
+      )}
+    </div>
+  )
+}
+
 function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
   const config = {
     cache: { label: 'KV Cache', className: 'text-blue-600', title: 'Exact match from Redis cache (7-day TTL)' },
@@ -45,6 +68,7 @@ export function ClaimItemsTable({ items, pricingItemId, onRefreshPrice }: Props)
               <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Age</th>
               <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Qty</th>
               <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Price</th>
+              <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Source</th>
               <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-4 py-2.5"></th>
             </tr>
@@ -79,6 +103,9 @@ export function ClaimItemsTable({ items, pricingItemId, onRefreshPrice }: Props)
                   )}
                 </td>
                 <td className="px-4 py-3">
+                  <SourceLinks sources={item.price_sources} />
+                </td>
+                <td className="px-4 py-3">
                   {item.flagged ? (
                     <span className="text-xs text-red-600 font-medium">Flagged</span>
                   ) : (
@@ -100,7 +127,7 @@ export function ClaimItemsTable({ items, pricingItemId, onRefreshPrice }: Props)
           {items.some((i) => i.price) && (
             <tfoot>
               <tr className="border-t border-gray-200 bg-gray-50">
-                <td colSpan={4} className="px-4 py-3 text-sm font-medium text-gray-700 text-right">
+                <td colSpan={5} className="px-4 py-3 text-sm font-medium text-gray-700 text-right">
                   Total Replacement Cost:
                 </td>
                 <td className="px-4 py-3 text-sm font-semibold text-gray-900">

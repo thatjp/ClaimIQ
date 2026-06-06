@@ -77,7 +77,7 @@ export function useItemExtraction() {
     }
   }
 
-  async function pollForPrice(runId: string): Promise<number | null> {
+  async function pollForPrice(runId: string): Promise<{ price: number; sources: string[] } | null> {
     const maxAttempts = 30
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 2000))
@@ -85,7 +85,7 @@ export function useItemExtraction() {
         const res = await fetch(`/api/price/${runId}`)
         if (!res.ok) return null
         const data = await res.json()
-        if (data.status === 'completed' && data.price) return data.price
+        if (data.status === 'completed' && data.price) return { price: data.price, sources: data.sources ?? [] }
         if (data.status === 'failed') return null
       } catch {
         return null
@@ -107,13 +107,13 @@ export function useItemExtraction() {
           })
           const data = await res.json()
           if (data.price) {
-            updatedItems[i] = { ...item, price: data.price, priceStatus: 'found' }
+            updatedItems[i] = { ...item, price: data.price, priceSources: data.sources ?? [], priceStatus: 'found' }
           } else if (data.workflowRunId) {
             updatedItems[i] = { ...item, priceStatus: 'pending', workflowRunId: data.workflowRunId }
             setExtractedItems([...updatedItems])
-            const price = await pollForPrice(data.workflowRunId)
-            updatedItems[i] = price
-              ? { ...item, price, priceStatus: 'found' }
+            const result = await pollForPrice(data.workflowRunId)
+            updatedItems[i] = result
+              ? { ...item, price: result.price, priceSources: result.sources, priceStatus: 'found' }
               : { ...item, priceStatus: 'error' }
           } else {
             updatedItems[i] = { ...item, priceStatus: 'error' }

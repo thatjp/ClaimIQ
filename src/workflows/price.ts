@@ -6,8 +6,21 @@ import { embedItem } from '@/lib/ai/embed'
 import { MODELS, anthropic } from '@/lib/ai/models'
 import type { ClaimItemInput } from '@/lib/workflow'
 
+const PREFERRED_SOURCES: Record<string, string[]> = {
+  electronics:  ['bestbuy.com', 'amazon.com', 'bhphotovideo.com', 'newegg.com'],
+  appliances:   ['homedepot.com', 'lowes.com', 'bestbuy.com', 'appliancesconnection.com'],
+  furniture:    ['wayfair.com', 'ikea.com', 'amazon.com', 'ashleyfurniture.com'],
+  clothing:     ['nordstrom.com', 'amazon.com', 'zappos.com', 'macys.com'],
+  jewelry:      ['jared.com', 'kay.com', 'bluenile.com', 'tiffany.com'],
+  tools:        ['homedepot.com', 'lowes.com', 'amazon.com', 'acmetools.com'],
+  vehicles:     ['kbb.com', 'edmunds.com', 'ebay.com/motors', 'autotrader.com'],
+  other:        ['amazon.com', 'walmart.com', 'target.com'],
+}
+
 async function lookupPrice(item: ClaimItemInput) {
   'use step'
+
+  const preferred = PREFERRED_SOURCES[item.category ?? 'other'] ?? PREFERRED_SOURCES.other
 
   const schema = z.object({
     price: z.number().describe('Current retail replacement cost in USD'),
@@ -26,8 +39,12 @@ Brand: ${item.brand || 'unknown'}
 Model: ${item.model || 'unknown'}
 Condition: ${item.condition}
 Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
+Category: ${item.category || 'unknown'}
 
-Search retailers like Amazon, Best Buy, Home Depot, or the manufacturer's site. You MUST return at least one source URL from your search results — do not estimate without searching first.`,
+Preferred sources for this category: ${preferred.join(', ')}.
+Search these sites first — they provide the most accurate pricing for this item type.
+Fall back to other retailers only if the item is not found on the preferred sites.
+You MUST return at least one source URL from your actual search results — do not estimate without searching first.`,
   })
 
   return experimental_output
