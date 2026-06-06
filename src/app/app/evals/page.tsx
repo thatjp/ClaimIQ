@@ -34,82 +34,97 @@ export default function EvalsPage() {
   const passCount = results.filter((r) => r.pass).length
   const passRate = results.length > 0 ? passCount / results.length : null
 
+  async function evalFixture(fixture: Fixture, onResult: (r: EvalResult) => void) {
+    let result: EvalResult = {
+      item: fixture.name,
+      expected: fixture.expectedPrice,
+      actual: null,
+      withinTolerance: false,
+      hasSource: false,
+      sourceIsUrl: false,
+      pass: false,
+      notes: '',
+    }
+
+    try {
+      const res = await fetch('/api/price', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item: {
+            name: fixture.name,
+            brand: fixture.brand,
+            model: fixture.model,
+            condition: fixture.condition,
+            estimatedAge: fixture.age,
+          },
+        }),
+      })
+
+      let data = await res.json()
+
+      if (data.status === 'pending' && data.workflowRunId) {
+        const deadline = Date.now() + 60_000
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 2000))
+          const pollRes = await fetch(`/api/price/${data.workflowRunId}`)
+          const pollData = await pollRes.json()
+          if (pollData.status === 'completed' || pollData.status === 'failed') {
+            data = pollData
+            break
+          }
+        }
+      }
+
+      const price: number | undefined = data.price
+      const sources: string[] | undefined = data.sources
+
+      const withinTolerance =
+        price !== undefined &&
+        Math.abs(price - fixture.expectedPrice) / fixture.expectedPrice <= fixture.tolerance
+
+      const hasSource = Array.isArray(sources) && sources.length > 0
+      const sourceIsUrl = hasSource && sources!.every((s: string) => s.startsWith('http'))
+      const pass = Boolean(withinTolerance && hasSource && sourceIsUrl)
+
+      const notes: string[] = []
+      if (!withinTolerance && price !== undefined) {
+        notes.push(`$${price} outside ${fixture.tolerance * 100}% tolerance of $${fixture.expectedPrice}`)
+      }
+      if (!hasSource) notes.push('No sources returned')
+      if (!sourceIsUrl && hasSource) notes.push('Sources are not valid URLs')
+      if (data.status === 'pending') notes.push('Price lookup pending (workflow triggered)')
+
+      result = {
+        item: fixture.name,
+        expected: fixture.expectedPrice,
+        actual: price ?? null,
+        withinTolerance: Boolean(withinTolerance),
+        hasSource,
+        sourceIsUrl,
+        pass,
+        notes: notes.join('; '),
+        source: data.source,
+      }
+    } catch (err) {
+      result.notes = err instanceof Error ? err.message : 'Request failed'
+    }
+
+    onResult(result)
+  }
+
   async function runEvals() {
     setRunning(true)
     setDone(false)
     setResults([])
 
-    const allResults: EvalResult[] = []
-
-    for (const fixture of fixtures as Fixture[]) {
-      setCurrentItem(fixture.name)
-
-      let result: EvalResult = {
-        item: fixture.name,
-        expected: fixture.expectedPrice,
-        actual: null,
-        withinTolerance: false,
-        hasSource: false,
-        sourceIsUrl: false,
-        pass: false,
-        notes: '',
-      }
-
-      try {
-        const res = await fetch('/api/price', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            item: {
-              name: fixture.name,
-              brand: fixture.brand,
-              model: fixture.model,
-              condition: fixture.condition,
-              estimatedAge: fixture.age,
-            },
-          }),
-        })
-
-        const data = await res.json()
-        const price: number | undefined = data.price
-        const sources: string[] | undefined = data.sources
-
-        const withinTolerance =
-          price !== undefined &&
-          Math.abs(price - fixture.expectedPrice) / fixture.expectedPrice <= fixture.tolerance
-
-        const hasSource = Array.isArray(sources) && sources.length > 0
-        const sourceIsUrl = hasSource && sources!.every((s: string) => s.startsWith('http'))
-        const pass = Boolean(withinTolerance && hasSource && sourceIsUrl)
-
-        const notes: string[] = []
-        if (!withinTolerance && price !== undefined) {
-          notes.push(
-            `$${price} outside ${fixture.tolerance * 100}% tolerance of $${fixture.expectedPrice}`
-          )
-        }
-        if (!hasSource) notes.push('No sources returned')
-        if (!sourceIsUrl && hasSource) notes.push('Sources are not valid URLs')
-        if (data.status === 'pending') notes.push('Price lookup pending (workflow triggered)')
-
-        result = {
-          item: fixture.name,
-          expected: fixture.expectedPrice,
-          actual: price ?? null,
-          withinTolerance: Boolean(withinTolerance),
-          hasSource,
-          sourceIsUrl,
-          pass,
-          notes: notes.join('; '),
-          source: data.source,
-        }
-      } catch (err) {
-        result.notes = err instanceof Error ? err.message : 'Request failed'
-      }
-
-      allResults.push(result)
-      setResults([...allResults])
-    }
+    await Promise.all(
+      (fixtures as Fixture[]).map((fixture) =>
+        evalFixture(fixture, (result) =>
+          setResults((prev) => [...prev, result])
+        )
+      )
+    )
 
     setCurrentItem(null)
     setRunning(false)

@@ -27,8 +27,8 @@ export async function POST(req: Request) {
     if (cached) {
       return Response.json({ ...cached, source: 'cache' })
     }
-  } catch {
-    // KV not available — continue to next layer
+  } catch (err) {
+    console.warn('[price] KV cache unavailable:', err instanceof Error ? err.message : err)
   }
 
   // Layer 2: pgvector similarity search (90-day TTL)
@@ -48,8 +48,8 @@ export async function POST(req: Request) {
     if (rows.length > 0 && (rows[0].distance as number) < 0.15) {
       return Response.json({ ...rows[0], source: 'vector_cache' })
     }
-  } catch {
-    // pgvector not available or DB not connected — continue to workflow
+  } catch (err) {
+    console.warn('[price] pgvector search unavailable:', err instanceof Error ? err.message : err)
   }
 
   // Layer 3: Trigger Workflow for live web search + price normalization
