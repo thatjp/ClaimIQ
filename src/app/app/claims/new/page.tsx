@@ -1,59 +1,11 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-
-const US_STATES = [
-  { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' },
-  { code: 'AZ', name: 'Arizona' }, { code: 'AR', name: 'Arkansas' },
-  { code: 'CA', name: 'California' }, { code: 'CO', name: 'Colorado' },
-  { code: 'CT', name: 'Connecticut' }, { code: 'DE', name: 'Delaware' },
-  { code: 'FL', name: 'Florida' }, { code: 'GA', name: 'Georgia' },
-  { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
-  { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' },
-  { code: 'IA', name: 'Iowa' }, { code: 'KS', name: 'Kansas' },
-  { code: 'KY', name: 'Kentucky' }, { code: 'LA', name: 'Louisiana' },
-  { code: 'ME', name: 'Maine' }, { code: 'MD', name: 'Maryland' },
-  { code: 'MA', name: 'Massachusetts' }, { code: 'MI', name: 'Michigan' },
-  { code: 'MN', name: 'Minnesota' }, { code: 'MS', name: 'Mississippi' },
-  { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' },
-  { code: 'NE', name: 'Nebraska' }, { code: 'NV', name: 'Nevada' },
-  { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
-  { code: 'NM', name: 'New Mexico' }, { code: 'NY', name: 'New York' },
-  { code: 'NC', name: 'North Carolina' }, { code: 'ND', name: 'North Dakota' },
-  { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
-  { code: 'OR', name: 'Oregon' }, { code: 'PA', name: 'Pennsylvania' },
-  { code: 'RI', name: 'Rhode Island' }, { code: 'SC', name: 'South Carolina' },
-  { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
-  { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' },
-  { code: 'VT', name: 'Vermont' }, { code: 'VA', name: 'Virginia' },
-  { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
-  { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' },
-]
-
-interface ExtractedItem {
-  name: string
-  brand?: string
-  model?: string
-  category: string
-  condition: string
-  estimatedAge?: number
-  quantity: number
-  adjusterNotes?: string
-  price?: number
-  priceStatus?: 'pending' | 'found' | 'error'
-  workflowRunId?: string
-}
-
-const BLANK_ITEM: ExtractedItem = {
-  name: '',
-  brand: '',
-  model: '',
-  category: 'other',
-  condition: 'good',
-  estimatedAge: undefined,
-  quantity: 1,
-}
+import { US_STATES } from '@/lib/constants'
+import { BLANK_ITEM, ExtractedItem } from '@/types/items'
+import { useItemExtraction } from '@/lib/hooks/useItemExtraction'
+import { ItemReviewTable } from '@/components/ItemReviewTable'
 
 export default function NewClaimPage() {
   const router = useRouter()
@@ -61,155 +13,45 @@ export default function NewClaimPage() {
   const [state, setState] = useState('CA')
   const [policyType, setPolicyType] = useState('HO-3')
   const [dateOfLoss, setDateOfLoss] = useState(new Date().toISOString().split('T')[0])
-  const [description, setDescription] = useState('')
-  const [imageBase64, setImageBase64] = useState<string | null>(null)
-
-  const [step, setStep] = useState<'form' | 'extracting' | 'review' | 'pricing' | 'done'>('form')
-  const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([])
   const [claimId, setClaimId] = useState<string | null>(null)
-  const [error, setError] = useState('')
   const [addingItem, setAddingItem] = useState(false)
   const [newItem, setNewItem] = useState<ExtractedItem>(BLANK_ITEM)
-  const [recording, setRecording] = useState(false)
-  const [transcribing, setTranscribing] = useState(false)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
+  const [submitError, setSubmitError] = useState('')
 
-  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const result = ev.target?.result as string
-      // Strip data URL prefix for the API
-      setImageBase64(result.split(',')[1])
-    }
-    reader.readAsDataURL(file)
-  }
-
-  async function startRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    const mediaRecorder = new MediaRecorder(stream)
-    audioChunksRef.current = []
-    mediaRecorder.ondataavailable = (e) => audioChunksRef.current.push(e.data)
-    mediaRecorder.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop())
-      setTranscribing(true)
-      try {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        const formData = new FormData()
-        formData.append('audio', blob, 'recording.webm')
-        const res = await fetch('/api/transcribe', { method: 'POST', body: formData })
-        if (res.ok) {
-          const { text } = await res.json()
-          setDescription((prev) => (prev ? prev + ' ' + text : text))
-        }
-      } finally {
-        setTranscribing(false)
-      }
-    }
-    mediaRecorderRef.current = mediaRecorder
-    mediaRecorder.start()
-    setRecording(true)
-  }
-
-  function stopRecording() {
-    mediaRecorderRef.current?.stop()
-    setRecording(false)
-  }
+  const {
+    step, setStep, setExtractedItems, extractedItems,
+    description, setDescription, error,
+    recording, transcribing,
+    handleImageChange, startRecording, stopRecording, priceAll,
+  } = useItemExtraction()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setError('')
+    setSubmitError('')
     setStep('extracting')
-
     try {
-      // Create the claim
       const claimRes = await fetch('/api/claims', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state, policyType, dateOfLoss }),
       })
-
-      if (!claimRes.ok) {
-        throw new Error('Failed to create claim')
-      }
-
+      if (!claimRes.ok) throw new Error('Failed to create claim')
       const claim = await claimRes.json()
       setClaimId(claim.id)
 
-      // Extract items from description
       const extractRes = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: description, imageBase64 }),
+        body: JSON.stringify({ text: description }),
       })
-
-      if (!extractRes.ok) {
-        throw new Error('Failed to extract items')
-      }
-
+      if (!extractRes.ok) throw new Error('Failed to extract items')
       const { items } = await extractRes.json()
       setExtractedItems(items || [])
       setStep('review')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setSubmitError(err instanceof Error ? err.message : 'An error occurred')
       setStep('form')
     }
-  }
-
-  async function pollForPrice(runId: string): Promise<number | null> {
-    const maxAttempts = 30
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const res = await fetch(`/api/price/${runId}`)
-        if (!res.ok) return null
-        const data = await res.json()
-        if (data.status === 'completed' && data.price) return data.price
-        if (data.status === 'failed') return null
-      } catch {
-        return null
-      }
-    }
-    return null
-  }
-
-  async function handlePriceAll() {
-    setStep('pricing')
-
-    const updatedItems = [...extractedItems]
-
-    await Promise.all(
-      updatedItems.map(async (item, i) => {
-        try {
-          const res = await fetch('/api/price', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item }),
-          })
-          const data = await res.json()
-
-          if (data.price) {
-            updatedItems[i] = { ...item, price: data.price, priceStatus: 'found' }
-          } else if (data.workflowRunId) {
-            updatedItems[i] = { ...item, priceStatus: 'pending', workflowRunId: data.workflowRunId }
-            setExtractedItems([...updatedItems])
-            const price = await pollForPrice(data.workflowRunId)
-            updatedItems[i] = price
-              ? { ...item, price, priceStatus: 'found' }
-              : { ...item, priceStatus: 'error' }
-          } else {
-            updatedItems[i] = { ...item, priceStatus: 'error' }
-          }
-        } catch {
-          updatedItems[i] = { ...item, priceStatus: 'error' }
-        }
-        setExtractedItems([...updatedItems])
-      })
-    )
-
-    setStep('done')
   }
 
   async function handleContinue() {
@@ -221,7 +63,7 @@ export default function NewClaimPage() {
         body: JSON.stringify({ items: extractedItems }),
       })
     } catch {
-      // proceed anyway — items can be added in the workspace
+      // proceed anyway
     }
     router.push(`/app/claims/${claimId}`)
   }
@@ -244,147 +86,21 @@ export default function NewClaimPage() {
           Add, remove, or price items before proceeding.
         </p>
 
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Item</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Category</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Condition</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Age (yrs)</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Qty</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Price</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {extractedItems.map((item, i) => (
-                <tr key={i}>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{item.name}</div>
-                    {(item.brand || item.model) && (
-                      <div className="text-xs text-gray-500">
-                        {[item.brand, item.model].filter(Boolean).join(' ')}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-700 capitalize">{item.category}</td>
-                  <td className="px-4 py-3 text-gray-700 capitalize">{item.condition}</td>
-                  <td className="px-4 py-3 text-gray-700">{item.estimatedAge ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-700">{item.quantity}</td>
-                  <td className="px-4 py-3">
-                    {item.priceStatus === 'pending' && (
-                      <span className="text-yellow-600 text-xs">Pricing...</span>
-                    )}
-                    {item.priceStatus === 'found' && item.price && (
-                      <span className="text-green-700 font-medium">${item.price.toLocaleString()}</span>
-                    )}
-                    {item.priceStatus === 'error' && (
-                      <span className="text-red-500 text-xs">Error</span>
-                    )}
-                    {!item.priceStatus && (
-                      <span className="text-gray-400 text-xs">Not priced</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {step === 'review' && (
-                      <button
-                        onClick={() => setExtractedItems((prev) => prev.filter((_, idx) => idx !== i))}
-                        className="text-xs text-red-400 hover:text-red-600"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-
-              {/* Inline add item form */}
-              {addingItem && (
-                <tr className="bg-blue-50">
-                  <td className="px-4 py-3">
-                    <input
-                      autoFocus
-                      placeholder="Item name *"
-                      value={newItem.name}
-                      onChange={(e) => setNewItem((p) => ({ ...p, name: e.target.value }))}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm mb-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                    <input
-                      placeholder="Brand"
-                      value={newItem.brand ?? ''}
-                      onChange={(e) => setNewItem((p) => ({ ...p, brand: e.target.value }))}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <select
-                      value={newItem.category}
-                      onChange={(e) => setNewItem((p) => ({ ...p, category: e.target.value }))}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      {['electronics','appliances','furniture','clothing','jewelry','tools','other'].map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3">
-                    <select
-                      value={newItem.condition}
-                      onChange={(e) => setNewItem((p) => ({ ...p, condition: e.target.value }))}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      {['new','good','fair','poor'].map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3">
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="—"
-                      value={newItem.estimatedAge ?? ''}
-                      onChange={(e) => setNewItem((p) => ({ ...p, estimatedAge: e.target.value ? Number(e.target.value) : undefined }))}
-                      className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <input
-                      type="number"
-                      min={1}
-                      value={newItem.quantity}
-                      onChange={(e) => setNewItem((p) => ({ ...p, quantity: Number(e.target.value) }))}
-                      className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-400">—</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={() => {
-                          if (!newItem.name.trim()) return
-                          setExtractedItems((prev) => [...prev, { ...newItem }])
-                          setNewItem(BLANK_ITEM)
-                          setAddingItem(false)
-                        }}
-                        className="text-xs text-blue-600 font-medium hover:text-blue-700"
-                      >
-                        Add
-                      </button>
-                      <button
-                        onClick={() => { setAddingItem(false); setNewItem(BLANK_ITEM) }}
-                        className="text-xs text-gray-400 hover:text-gray-600"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ItemReviewTable
+          items={extractedItems}
+          step={step}
+          addingItem={addingItem}
+          newItem={newItem}
+          onRemove={(i) => setExtractedItems((prev) => prev.filter((_, idx) => idx !== i))}
+          onNewItemChange={setNewItem}
+          onAddConfirm={() => {
+            if (!newItem.name.trim()) return
+            setExtractedItems((prev) => [...prev, { ...newItem }])
+            setNewItem(BLANK_ITEM)
+            setAddingItem(false)
+          }}
+          onAddCancel={() => { setAddingItem(false); setNewItem(BLANK_ITEM) }}
+        />
 
         <div className="flex gap-3 flex-wrap">
           {step === 'review' && !addingItem && (
@@ -397,7 +113,7 @@ export default function NewClaimPage() {
           )}
           {step === 'review' && (
             <button
-              onClick={handlePriceAll}
+              onClick={priceAll}
               disabled={extractedItems.length === 0}
               className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
@@ -426,9 +142,7 @@ export default function NewClaimPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
         <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-            Claim Details
-          </h2>
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Claim Details</h2>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -439,9 +153,7 @@ export default function NewClaimPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {US_STATES.map((s) => (
-                  <option key={s.code} value={s.code}>
-                    {s.name}
-                  </option>
+                  <option key={s.code} value={s.code}>{s.name}</option>
                 ))}
               </select>
             </div>
@@ -476,15 +188,11 @@ export default function NewClaimPage() {
         </div>
 
         <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-            Item Description
-          </h2>
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Item Description</h2>
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-gray-700">
-                Describe damaged or lost items
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Describe damaged or lost items</label>
               <button
                 type="button"
                 onClick={recording ? stopRecording : startRecording}
@@ -512,9 +220,7 @@ export default function NewClaimPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Photo (optional)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Photo (optional)</label>
             <input
               type="file"
               accept="image/*"
@@ -527,9 +233,9 @@ export default function NewClaimPage() {
           </div>
         </div>
 
-        {error && (
+        {(submitError || error) && (
           <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-100">
-            {error}
+            {submitError || error}
           </p>
         )}
 
