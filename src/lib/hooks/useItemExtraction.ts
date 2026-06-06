@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { mapWithConcurrencyLimit, PRICE_LOOKUP_CONCURRENCY } from '@/lib/pricing/batch'
 import { lookupItemPrice } from '@/lib/pricing/client'
 import type { PriceTraceStep } from '@/lib/pricing/trace'
 import { ExtractedItem } from '@/types/items'
@@ -84,56 +85,73 @@ export function useItemExtraction() {
   async function priceAll() {
     setStep('pricing')
     setReplayIndices(new Set())
-    const updatedItems = [...extractedItems]
 
-    for (let i = 0; i < updatedItems.length; i++) {
-      const item = updatedItems[i]
-      updatedItems[i] = { ...item, priceStatus: 'pending' }
-      setExtractedItems([...updatedItems])
+    const snapshot = extractedItems.map((item) => ({ ...item, priceStatus: 'queued' as const }))
+    setExtractedItems(snapshot)
 
-        try {
-          const outcome = await lookupItemPrice(
-            {
-              name: item.name,
-              brand: item.brand,
-              model: item.model,
-              category: item.category,
-              condition: item.condition,
-              estimated_age: item.estimatedAge,
-              quantity: item.quantity,
+    await mapWithConcurrencyLimit(snapshot, PRICE_LOOKUP_CONCURRENCY, async (item, i) => {
+      setExtractedItems((prev) =>
+        prev.map((it, idx) => (idx === i ? { ...it, priceStatus: 'pending' } : it))
+      )
+
+      try {
+        const outcome = await lookupItemPrice(
+          {
+            name: item.name,
+            brand: item.brand,
+            model: item.model,
+            category: item.category,
+            condition: item.condition,
+            estimated_age: item.estimatedAge,
+            quantity: item.quantity,
+          },
+          {
+            onTraceUpdate: (trace) => {
+              setPricingTraces((prev) => ({ ...prev, [i]: trace }))
             },
-            {
-              onTraceUpdate: (trace) => {
-                setPricingTraces((prev) => ({ ...prev, [i]: trace }))
-              },
-            }
-          )
+          }
+        )
 
         setPricingTraces((prev) => ({ ...prev, [i]: outcome.trace }))
 
         if (outcome.price != null) {
-          updatedItems[i] = {
-            ...item,
-            price: outcome.price,
-            priceSources: outcome.sources ?? [],
-            priceSource: outcome.source,
-            priceTrace: outcome.trace,
-            priceStatus: 'found',
-          }
+          setExtractedItems((prev) =>
+            prev.map((it, idx) =>
+              idx === i
+                ? {
+                    ...it,
+                    price: outcome.price,
+                    priceSources: outcome.sources ?? [],
+                    priceSource: outcome.source,
+                    priceTrace: outcome.trace,
+                    priceStatus: 'found',
+                  }
+                : it
+            )
+          )
           setReplayIndices((prev) => new Set(prev).add(i))
         } else {
-          updatedItems[i] = { ...item, priceStatus: 'error', priceTrace: outcome.trace }
+          setExtractedItems((prev) =>
+            prev.map((it, idx) =>
+              idx === i
+                ? { ...it, priceStatus: 'error', priceTrace: outcome.trace }
+                : it
+            )
+          )
         }
       } catch {
-        updatedItems[i] = { ...item, priceStatus: 'error' }
+        setExtractedItems((prev) =>
+          prev.map((it, idx) => (idx === i ? { ...it, priceStatus: 'error' } : it))
+        )
       }
-      setExtractedItems([...updatedItems])
-    }
+    })
+
     setStep('done')
   }
 
   const isPricingInProgress =
-    step === 'pricing' || extractedItems.some((item) => item.priceStatus === 'pending')
+    step === 'pricing' ||
+    extractedItems.some((item) => item.priceStatus === 'queued' || item.priceStatus === 'pending')
 
   return {
     step,

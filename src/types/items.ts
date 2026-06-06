@@ -11,7 +11,7 @@ export interface ExtractedItem {
   adjusterNotes?: string
   price?: number
   priceSources?: string[]
-  priceStatus?: 'pending' | 'found' | 'error'
+  priceStatus?: 'queued' | 'pending' | 'found' | 'error'
   priceSource?: ClaimItem['priceSource']
   priceTrace?: PriceTraceStep[]
   workflowRunId?: string

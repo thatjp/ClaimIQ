@@ -18,6 +18,7 @@ interface Props {
 }
 
 function PriceCell({ item }: { item: ExtractedItem }) {
+  if (item.priceStatus === 'queued') return <span className="text-gray-500 text-xs">Queued</span>
   if (item.priceStatus === 'pending') return <span className="text-yellow-600 text-xs">Pricing...</span>
   if (item.priceStatus === 'found' && item.price) return <span className="text-green-700 font-medium">${item.price.toLocaleString()}</span>
   if (item.priceStatus === 'error') return <span className="text-red-500 text-xs">Error</span>
