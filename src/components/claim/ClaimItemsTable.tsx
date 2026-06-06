@@ -17,15 +17,17 @@ function SourceLinks({ sources }: { sources?: string[] | null }) {
 
 function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
   const config = {
-    cache: { label: 'KV Cache', className: 'text-blue-600', title: 'Exact match from Redis cache (7-day TTL)' },
-    vector_cache: { label: 'Vector Cache', className: 'text-purple-600', title: 'Semantic match from pgvector similarity search (90-day TTL)' },
-    web_search: { label: 'Live Web Search', className: 'text-green-600', title: 'Retrieved via Anthropic web search tool through Vercel Workflow' },
+    cache:        { label: 'KV Cache',        className: 'text-blue-600',   title: 'Exact match from Redis cache (7-day TTL)' },
+    vector_cache: { label: 'Vector Cache',    className: 'text-purple-600', title: 'Semantic match from pgvector similarity search (90-day TTL)' },
+    ebay:         { label: 'eBay Sold',       className: 'text-yellow-600', title: 'Average of recent sold listings via eBay Finding API' },
+    web_search:   { label: 'Live Web Search', className: 'text-green-600',  title: 'Retrieved via Anthropic web search tool through Vercel Workflow' },
   }
   const c = config[source!]
   return (
     <div className={`text-xs mt-0.5 font-medium ${c.className}`} title={c.title}>
       {source === 'cache' && '⚡ '}
       {source === 'vector_cache' && '🔮 '}
+      {source === 'ebay' && '🛒 '}
       {source === 'web_search' && '🌐 '}
       {c.label}
     </div>

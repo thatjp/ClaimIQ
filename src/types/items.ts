@@ -38,7 +38,7 @@ export interface ClaimItem {
   adjuster_notes?: string
   price?: number
   price_sources?: string[]
-  priceSource?: 'cache' | 'vector_cache' | 'web_search'
+  priceSource?: 'cache' | 'vector_cache' | 'ebay' | 'web_search'
   flagged: boolean
   flag_reason?: string
 }

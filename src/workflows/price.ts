@@ -17,6 +17,64 @@ const PREFERRED_SOURCES: Record<string, string[]> = {
   other:        ['amazon.com', 'walmart.com', 'target.com'],
 }
 
+// eBay category IDs for Finding API
+const EBAY_CATEGORY_MAP: Record<string, string> = {
+  electronics: '293',
+  appliances:  '20710',
+  furniture:   '3197',
+  clothing:    '11450',
+  jewelry:     '281',
+  tools:       '631',
+  vehicles:    '6001',
+  other:       '',
+}
+
+interface EbayResult {
+  price: number
+  sources: string[]
+}
+
+async function lookupEbay(item: ClaimItemInput): Promise<EbayResult | null> {
+  'use step'
+
+  if (!process.env.EBAY_APP_ID) return null
+
+  const keywords = [item.name, item.brand, item.model].filter(Boolean).join(' ')
+  const categoryId = EBAY_CATEGORY_MAP[item.category ?? 'other']
+
+  const params = new URLSearchParams({
+    'OPERATION-NAME': 'findCompletedItems',
+    'SERVICE-VERSION': '1.0.0',
+    'SECURITY-APPNAME': process.env.EBAY_APP_ID,
+    'RESPONSE-DATA-FORMAT': 'JSON',
+    'keywords': keywords,
+    'itemFilter(0).name': 'SoldItemsOnly',
+    'itemFilter(0).value': 'true',
+    'sortOrder': 'EndTimeSoonest',
+    'paginationInput.entriesPerPage': '5',
+  })
+  if (categoryId) params.set('categoryId', categoryId)
+
+  try {
+    const res = await fetch(`https://svcs.ebay.com/services/search/FindingService/v1?${params}`)
+    if (!res.ok) return null
+    const data = await res.json()
+
+    const listings: unknown[] = data.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item ?? []
+    if (!listings.length) return null
+
+    type EbayItem = { sellingStatus: [{ currentPrice: [{ __value__: string }] }]; viewItemURL: [string] }
+    const typed = listings as EbayItem[]
+    const prices = typed.map((i) => parseFloat(i.sellingStatus[0].currentPrice[0].__value__))
+    const avg = prices.reduce((a, b) => a + b, 0) / prices.length
+    const sources = typed.map((i) => i.viewItemURL[0])
+
+    return { price: Math.round(avg), sources }
+  } catch {
+    return null
+  }
+}
+
 async function lookupPrice(item: ClaimItemInput) {
   'use step'
 
@@ -73,9 +131,17 @@ async function cachePrice(item: ClaimItemInput, price: number, sources: string[]
 export async function priceItemWorkflow(item: ClaimItemInput) {
   'use workflow'
 
+  // Layer 3a: eBay sold listings (structured API, actual market prices)
+  const ebay = await lookupEbay(item)
+  if (ebay) {
+    await cachePrice(item, ebay.price, ebay.sources)
+    return { price: ebay.price, sources: ebay.sources, source: 'ebay' }
+  }
+
+  // Layer 3b: Anthropic web search fallback
   const result = await lookupPrice(item)
   if (!result) throw new Error('Price lookup returned no output')
   await cachePrice(item, result.price, result.sources)
 
-  return { price: result.price, sources: result.sources }
+  return { price: result.price, sources: result.sources, source: 'web_search' }
 }

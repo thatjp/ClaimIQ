@@ -11,6 +11,7 @@ export interface PricingState {
 const STRATEGY_LABELS: Record<string, string> = {
   cache: 'KV Cache',
   vector_cache: 'Vector Cache',
+  ebay: 'eBay',
   web_search: 'Web Search',
   pending: 'Web Search',
 }
