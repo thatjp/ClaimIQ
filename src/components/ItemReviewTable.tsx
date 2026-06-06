@@ -18,10 +18,10 @@ interface Props {
 }
 
 function PriceCell({ item }: { item: ExtractedItem }) {
-  if (item.priceStatus === 'queued') return <span className="text-gray-500 text-xs">Queued</span>
-  if (item.priceStatus === 'pending') return <span className="text-yellow-600 text-xs">Pricing...</span>
-  if (item.priceStatus === 'found' && item.price) return <span className="text-green-700 font-medium">${item.price.toLocaleString()}</span>
-  if (item.priceStatus === 'error') return <span className="text-red-500 text-xs">Error</span>
+  if (item.priceStatus === 'queued') return <span className="text-gray-500 text-xs transition-opacity duration-300">Queued</span>
+  if (item.priceStatus === 'pending') return <span className="text-yellow-600 text-xs transition-opacity duration-300">Pricing...</span>
+  if (item.priceStatus === 'found' && item.price) return <span className="text-green-700 font-medium transition-opacity duration-300">${item.price.toLocaleString()}</span>
+  if (item.priceStatus === 'error') return <span className="text-red-500 text-xs transition-opacity duration-300">Error</span>
   return <span className="text-gray-400 text-xs">Not priced</span>
 }
 
@@ -42,7 +42,7 @@ export function ItemReviewTable({
       {/* Mobile card list */}
       <div className="md:hidden space-y-2">
         {items.map((item, i) => (
-          <div key={i} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <div key={i} className="bg-white border border-gray-200 rounded-lg px-4 py-3 table-row-resize">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="font-medium text-gray-900 text-sm truncate">{item.name}</div>
@@ -55,7 +55,7 @@ export function ItemReviewTable({
                   {item.estimatedAge && <span>{item.estimatedAge}y</span>}
                   <span>Qty {item.quantity}</span>
                 </div>
-                {(item.priceTrace ?? pricingTraces[i]) && (
+                {(step === 'pricing' || step === 'done' || item.priceTrace || pricingTraces[i]) && (
                   <PriceLookupTrace
                     trace={item.priceTrace ?? pricingTraces[i] ?? []}
                     replay={replayIndices.has(i)}
@@ -152,7 +152,7 @@ export function ItemReviewTable({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {items.map((item, i) => (
-              <tr key={i}>
+              <tr key={i} className="table-row-resize">
                 <td className="px-4 py-3">
                   <div className="font-medium text-gray-900">{item.name}</div>
                   {(item.brand || item.model) && (
@@ -160,7 +160,7 @@ export function ItemReviewTable({
                       {[item.brand, item.model].filter(Boolean).join(' ')}
                     </div>
                   )}
-                  {(item.priceTrace ?? pricingTraces[i]) && (
+                  {(step === 'pricing' || step === 'done' || item.priceTrace || pricingTraces[i]) && (
                     <PriceLookupTrace
                       trace={item.priceTrace ?? pricingTraces[i] ?? []}
                       replay={replayIndices.has(i)}

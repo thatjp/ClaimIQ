@@ -30,3 +30,48 @@ html, body {
 input, textarea, select {
   color: #000000;
 }
+
+@keyframes trace-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.trace-step-enter {
+  animation: trace-fade-in 0.35s ease-out both;
+}
+
+.trace-step-badge {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.trace-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s ease-out;
+}
+
+.trace-expand.is-open {
+  grid-template-rows: 1fr;
+}
+
+.trace-expand-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.table-row-resize {
+  transition: height 0.35s ease-out;
+}
+
+.table-row-resize td {
+  transition: padding 0.35s ease-out;
+}

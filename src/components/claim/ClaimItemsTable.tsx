@@ -90,7 +90,7 @@ export function ClaimItemsTable({
         <>
           <div className="md:hidden divide-y divide-gray-100">
             {items.map((item) => (
-              <div key={item.id} className={`px-4 py-3 ${item.flagged ? 'bg-red-50' : ''}`}>
+              <div key={item.id} className={`px-4 py-3 table-row-resize ${item.flagged ? 'bg-red-50' : ''}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="font-medium text-gray-900 text-sm truncate">{item.name}</div>
@@ -153,7 +153,7 @@ export function ClaimItemsTable({
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {items.map((item) => (
-                  <tr key={item.id} className={item.flagged ? 'bg-red-50' : 'hover:bg-gray-50'}>
+                  <tr key={item.id} className={`table-row-resize ${item.flagged ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900">{item.name}</div>
                       {(item.brand || item.model) && (
