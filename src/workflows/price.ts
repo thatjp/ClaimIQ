@@ -5,7 +5,8 @@ import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
 import { estimateItemPrice } from '@/lib/ai/pricing-estimate'
 import { MODELS, anthropic } from '@/lib/ai/models'
-import { traceStep, type PriceTraceStep } from '@/lib/pricing/trace'
+import { traceStep, type PriceLayer, type PriceTraceStep } from '@/lib/pricing/trace'
+import { updateLiveTrace } from '@/lib/pricing/live-trace'
 import type { ClaimItemInput } from '@/lib/workflow'
 
 const PREFERRED_SOURCES: Record<string, string[]> = {
@@ -221,24 +222,43 @@ async function cachePrice(item: ClaimItemInput, price: number, sources: string[]
   log('cache_write', true, stepElapsed(t0), { item: item.name, price })
 }
 
+async function publishLiveTrace(
+  traceKey: string | undefined,
+  workflowTrace: PriceTraceStep[],
+  activeLayer?: PriceLayer
+) {
+  'use step'
+
+  if (!traceKey) return
+  try {
+    await updateLiveTrace(traceKey, { workflowTrace, activeLayer })
+  } catch (err) {
+    console.warn('[price-workflow] live trace update failed:', err instanceof Error ? err.message : err)
+  }
+}
+
 export async function priceItemWorkflow(item: ClaimItemInput) {
   'use workflow'
 
   const workflowTrace: PriceTraceStep[] = []
+  const traceKey = item.traceKey
 
   // Layer 3a: eBay sold listings (structured API, actual market prices)
   const ebay = await lookupEbay(item)
   if (ebay.value) {
     workflowTrace.push(traceStep('ebay', 'hit', ebay.durationMs, ebay.detail))
+    await publishLiveTrace(traceKey, workflowTrace)
     await cachePrice(item, ebay.value.price, ebay.value.sources)
     return { price: ebay.value.price, sources: ebay.value.sources, source: 'ebay' as const, trace: workflowTrace }
   }
   workflowTrace.push(traceStep('ebay', 'miss', ebay.durationMs, ebay.detail))
+  await publishLiveTrace(traceKey, workflowTrace, 'web_search')
 
   // Layer 3b: Anthropic web search (with AI Gateway model fallback)
   const webResult = await lookupPrice(item)
   if (webResult.value) {
     workflowTrace.push(traceStep('web_search', 'hit', webResult.durationMs, webResult.detail))
+    await publishLiveTrace(traceKey, workflowTrace)
     await cachePrice(item, webResult.value.price, webResult.value.sources)
     return {
       price: webResult.value.price,
@@ -248,10 +268,12 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
     }
   }
   workflowTrace.push(traceStep('web_search', 'miss', webResult.durationMs, webResult.detail))
+  await publishLiveTrace(traceKey, workflowTrace, 'estimated')
 
   // Layer 3c: AI estimation — no live data available, model reasons from training knowledge
   const estimate = await estimatePrice(item)
   workflowTrace.push(traceStep('estimated', 'hit', estimate.durationMs, estimate.detail))
+  await publishLiveTrace(traceKey, workflowTrace)
   await cachePrice(item, estimate.value!.price, [])
   return { price: estimate.value!.price, sources: [], source: 'estimated' as const, trace: workflowTrace }
 }

@@ -16,6 +16,7 @@ export default function AddItemsPage() {
 
   const {
     step, setExtractedItems, extractedItems,
+    pricingTraces, replayIndices,
     description, setDescription, error,
     recording, transcribing,
     handleImageChange, startRecording, stopRecording,
@@ -62,6 +63,8 @@ export default function AddItemsPage() {
           step={step}
           addingItem={addingItem}
           newItem={newItem}
+          pricingTraces={pricingTraces}
+          replayIndices={replayIndices}
           onRemove={(i) => setExtractedItems((prev) => prev.filter((_, idx) => idx !== i))}
           onNewItemChange={setNewItem}
           onAddConfirm={() => {

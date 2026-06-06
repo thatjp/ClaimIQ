@@ -10,6 +10,8 @@ export interface ClaimItemInput {
   condition: string
   estimatedAge?: number
   quantity?: number
+  /** Server-generated id for publishing live trace progress to KV during workflow runs. */
+  traceKey?: string
 }
 
 export interface WorkflowResult {
@@ -18,12 +20,14 @@ export interface WorkflowResult {
 }
 
 export async function triggerPriceWorkflow(
-  item: ClaimItemInput | undefined
+  item: ClaimItemInput,
+  traceKey?: string
 ): Promise<WorkflowResult> {
   if (!item) {
     return { workflowRunId: 'mock-no-item', status: 'pending' }
   }
 
-  const run = await start(priceItemWorkflow, [item])
+  const workflowItem = traceKey ? { ...item, traceKey } : item
+  const run = await start(priceItemWorkflow, [workflowItem])
   return { workflowRunId: run.runId, status: 'pending' }
 }

@@ -91,16 +91,23 @@ export function useItemExtraction() {
       updatedItems[i] = { ...item, priceStatus: 'pending' }
       setExtractedItems([...updatedItems])
 
-      try {
-        const outcome = await lookupItemPrice({
-          name: item.name,
-          brand: item.brand,
-          model: item.model,
-          category: item.category,
-          condition: item.condition,
-          estimated_age: item.estimatedAge,
-          quantity: item.quantity,
-        })
+        try {
+          const outcome = await lookupItemPrice(
+            {
+              name: item.name,
+              brand: item.brand,
+              model: item.model,
+              category: item.category,
+              condition: item.condition,
+              estimated_age: item.estimatedAge,
+              quantity: item.quantity,
+            },
+            {
+              onTraceUpdate: (trace) => {
+                setPricingTraces((prev) => ({ ...prev, [i]: trace }))
+              },
+            }
+          )
 
         setPricingTraces((prev) => ({ ...prev, [i]: outcome.trace }))
 

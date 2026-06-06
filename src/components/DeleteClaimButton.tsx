@@ -3,7 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-export function DeleteClaimButton({ claimId }: { claimId: string }) {
+export function DeleteClaimButton({
+  claimId,
+  onDeleted,
+}: {
+  claimId: string
+  onDeleted?: () => void
+}) {
   const router = useRouter()
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -12,6 +18,7 @@ export function DeleteClaimButton({ claimId }: { claimId: string }) {
     setDeleting(true)
     try {
       await fetch(`/api/claims/${claimId}`, { method: 'DELETE' })
+      onDeleted?.()
       router.refresh()
     } finally {
       setDeleting(false)

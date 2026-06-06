@@ -23,15 +23,22 @@ export function useClaimPricing(
     setPricingState({ id: item.id, trace: [], isPolling: true })
 
     try {
-      const outcome = await lookupItemPrice({
-        name: item.name,
-        brand: item.brand,
-        model: item.model,
-        category: item.category,
-        condition: item.condition,
-        estimated_age: item.estimated_age,
-        quantity: item.quantity,
-      })
+      const outcome = await lookupItemPrice(
+        {
+          name: item.name,
+          brand: item.brand,
+          model: item.model,
+          category: item.category,
+          condition: item.condition,
+          estimated_age: item.estimated_age,
+          quantity: item.quantity,
+        },
+        {
+          onTraceUpdate: (trace) => {
+            setPricingState({ id: item.id, trace, isPolling: true })
+          },
+        }
+      )
 
       setPricingState({ id: item.id, trace: outcome.trace, isPolling: false })
 
@@ -62,11 +69,11 @@ export function useClaimPricing(
   }
 
   function shouldReplay(item: ClaimItem): boolean {
-    return replayItemId === item.id
+    return replayItemId === item.id && !isPricing(item)
   }
 
   function isPricing(item: ClaimItem): boolean {
-    return pricingState?.id === item.id
+    return pricingState?.id === item.id && pricingState.isPolling
   }
 
   return { pricingState, refreshPrice, getTraceForItem, shouldReplay, isPricing }

@@ -71,6 +71,36 @@ export function pendingWorkflowTrace(syncTrace: PriceTraceStep[]): PriceTraceSte
   return [...syncTrace, ...asyncSteps.filter((s) => !syncLayers.has(s.layer))]
 }
 
+const ASYNC_LAYERS: PriceLayer[] = ['ebay', 'web_search', 'estimated']
+
+/** Build ladder UI state while a workflow is in progress (completed steps + active running layer). */
+export function buildLivePriceTrace(
+  syncTrace: PriceTraceStep[],
+  workflowTrace: PriceTraceStep[],
+  activeLayer?: PriceLayer
+): PriceTraceStep[] {
+  const syncHit = syncTrace.find((s) => s.status === 'hit')
+  if (syncHit) return finalizeSyncHit(syncTrace, syncHit.layer)
+
+  const merged = mergePriceTrace(syncTrace, workflowTrace)
+
+  if (merged.some((s) => s.status === 'hit' && ASYNC_LAYERS.includes(s.layer))) {
+    return merged
+  }
+
+  if (!activeLayer) return merged
+
+  const activeIdx = ASYNC_LAYERS.indexOf(activeLayer)
+  return merged.map((step) => {
+    if (!ASYNC_LAYERS.includes(step.layer)) return step
+    if (step.status === 'hit' || step.status === 'miss' || step.status === 'error') return step
+    const idx = ASYNC_LAYERS.indexOf(step.layer)
+    if (step.layer === activeLayer) return traceStep(step.layer, 'running')
+    if (idx > activeIdx) return traceStep(step.layer, 'pending')
+    return step
+  })
+}
+
 export function finalizeSyncHit(
   syncTrace: PriceTraceStep[],
   hitLayer: PriceLayer

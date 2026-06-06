@@ -1,10 +1,12 @@
+import { randomUUID } from 'crypto'
 import { kv } from '@/lib/kv'
 import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
 import { triggerPriceWorkflow } from '@/lib/workflow'
+import { initLiveTrace } from '@/lib/pricing/live-trace'
 import {
+  buildLivePriceTrace,
   finalizeSyncHit,
-  pendingWorkflowTrace,
   traceStep,
   type PriceTraceStep,
 } from '@/lib/pricing/trace'
@@ -116,12 +118,19 @@ export async function POST(req: Request) {
   }
 
   // Layer 3: Trigger Workflow for eBay / web search
+  const traceKey = randomUUID()
   const t0 = performance.now()
-  const { workflowRunId } = await triggerPriceWorkflow(item)
+  const { workflowRunId } = await triggerPriceWorkflow(item, traceKey)
   const triggerMs = Math.round(performance.now() - t0)
-  log('workflow_trigger', true, triggerMs, { ...itemKey, workflowRunId })
+  log('workflow_trigger', true, triggerMs, { ...itemKey, workflowRunId, traceKey })
 
-  const trace = pendingWorkflowTrace(syncTrace)
+  try {
+    await initLiveTrace(traceKey, workflowRunId, syncTrace)
+  } catch (err) {
+    console.warn('[price] Failed to init live trace:', err instanceof Error ? err.message : err)
+  }
+
+  const trace = buildLivePriceTrace(syncTrace, [], 'ebay')
 
   return Response.json({ status: 'pending', workflowRunId, syncTrace, trace })
 }
