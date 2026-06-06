@@ -1,8 +1,9 @@
-import { generateText, generateObject, Output, stepCountIs } from 'ai'
+import { generateText, Output, stepCountIs } from 'ai'
 import { z } from 'zod'
 import { kv } from '@/lib/kv'
 import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
+import { estimateItemPrice } from '@/lib/ai/pricing-estimate'
 import { MODELS, anthropic, gatewayProviderOptions } from '@/lib/ai/models'
 import type { ClaimItemInput } from '@/lib/workflow'
 
@@ -150,35 +151,16 @@ You MUST return at least one source URL from your actual search results — do n
 async function estimatePrice(item: ClaimItemInput) {
   'use step'
 
-  const schema = z.object({
-    price: z.number().describe('Estimated replacement cost in USD based on your training knowledge'),
-  })
-
   const t0 = performance.now()
-  // AI Gateway handles model fallback automatically (Sonnet → GPT-4o → Gemini)
-  const { object } = await generateObject({
-    model: MODELS.priceNorm,
-    providerOptions: gatewayProviderOptions,
-    schema,
-    prompt: `You are an insurance pricing assistant. Estimate the current retail replacement cost for this item based on your knowledge. Be conservative — use the lower end of the typical price range.
+  const price = await estimateItemPrice(item)
 
-Item: ${item.name}
-Brand: ${item.brand || 'unknown'}
-Model: ${item.model || 'unknown'}
-Condition: ${item.condition}
-Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
-Category: ${item.category || 'unknown'}
-
-Return your best price estimate. This is a fallback — live pricing was unavailable.`,
-  })
-
-  log('estimation', !!object.price, Math.round(performance.now() - t0), {
+  log('estimation', !!price, Math.round(performance.now() - t0), {
     item: item.name,
     category: item.category,
-    price: object.price,
+    price,
   })
 
-  return { price: object.price, sources: [] as string[], source: 'estimated' as const }
+  return { price, sources: [] as string[], source: 'estimated' as const }
 }
 
 async function cachePrice(item: ClaimItemInput, price: number, sources: string[]) {

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "tv-sony-55",
+    "item": {
+      "name": "Sony Bravia 55-inch 4K TV",
+      "brand": "Sony",
+      "condition": "good",
+      "estimatedAge": 3,
+      "category": "electronics"
+    },
+    "acceptableRange": [400, 1200],
+    "notes": "Mid-range 55-inch 4K TV retail replacement"
+  },
+  {
+    "id": "fridge-samsung",
+    "item": {
+      "name": "Samsung French Door Refrigerator",
+      "brand": "Samsung",
+      "condition": "good",
+      "estimatedAge": 2,
+      "category": "appliances"
+    },
+    "acceptableRange": [1500, 4500],
+    "notes": "Full-size French door refrigerator"
+  },
+  {
+    "id": "macbook-pro-14",
+    "item": {
+      "name": "MacBook Pro 14-inch",
+      "brand": "Apple",
+      "condition": "good",
+      "estimatedAge": 2,
+      "category": "electronics"
+    },
+    "acceptableRange": [1200, 2500],
+    "notes": "Recent-generation MacBook Pro base config"
+  },
+  {
+    "id": "dewalt-drill-kit",
+    "item": {
+      "name": "DeWalt 20V MAX Drill Kit",
+      "brand": "DeWalt",
+      "condition": "good",
+      "category": "tools"
+    },
+    "acceptableRange": [100, 350],
+    "notes": "Consumer drill/driver kit"
+  },
+  {
+    "id": "wedding-ring-gold",
+    "item": {
+      "name": "14k gold wedding band",
+      "condition": "good",
+      "category": "jewelry"
+    },
+    "acceptableRange": [200, 2000],
+    "notes": "Wide range due to weight/karat ambiguity — catches wild hallucinations"
+  },
+  {
+    "id": "sectional-sofa",
+    "item": {
+      "name": "Leather sectional sofa",
+      "condition": "fair",
+      "estimatedAge": 6,
+      "category": "furniture"
+    },
+    "acceptableRange": [800, 4000],
+    "notes": "Leather sectional retail replacement"
+  },
+  {
+    "id": "kitchenaid-mixer",
+    "item": {
+      "name": "KitchenAid Stand Mixer",
+      "brand": "KitchenAid",
+      "condition": "good",
+      "category": "appliances"
+    },
+    "acceptableRange": [250, 600],
+    "notes": "Standard Artisan series range"
+  },
+  {
+    "id": "winter-coat",
+    "item": {
+      "name": "Men's winter coat",
+      "condition": "fair",
+      "estimatedAge": 4,
+      "category": "clothing"
+    },
+    "acceptableRange": [80, 500],
+    "notes": "Generic outerwear estimate"
+  }
+]
