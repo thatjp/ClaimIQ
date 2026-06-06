@@ -25,7 +25,10 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Claim not found' }, { status: 404 })
   }
 
-  const claimRules = claim.regionalRules || 'Standard HO-3 policy rules apply.'
+  const claimRules =
+    req.headers.get('x-claim-rules') ||
+    claim.regionalRules ||
+    'Standard HO-3 policy rules apply.'
 
   // Convert UI messages to model messages, sanitizing text content
   const modelMessages = await convertToModelMessages(messages)

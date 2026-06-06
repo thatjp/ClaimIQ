@@ -33,6 +33,9 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Claim not found' }, { status: 404 })
   }
 
+  const regionalRules =
+    req.headers.get('x-claim-rules') || 'Standard HO-3 policy rules apply.'
+
   const result = streamText({
     model: MODELS.docGen,
     system: `You are generating a professional insurance claim document for submission.
@@ -41,7 +44,8 @@ Every line item MUST include: item name, condition, estimated age, replacement v
 Flag any items where the price source is older than 90 days with [STALE PRICE - VERIFY].
 Flag any items without a price source with [UNSOURCED - REQUIRES VERIFICATION].
 Use standard insurance industry formatting with dollar amounts, dates, and policy references.
-Be conservative and accurate — this document has legal standing.`,
+Be conservative and accurate — this document has legal standing.
+Regional rules: ${regionalRules}`,
     prompt: `Generate a complete, professional insurance claim document for the following claim data:
 
 ${JSON.stringify(claim, null, 2)}
