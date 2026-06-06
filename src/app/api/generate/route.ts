@@ -1,7 +1,7 @@
 import { streamText } from 'ai'
 import { put } from '@vercel/blob'
 import { getClaim } from '@/lib/claims'
-import { MODELS } from '@/lib/ai/models'
+import { MODELS, gatewayProviderOptions } from '@/lib/ai/models'
 
 async function saveClaimDocument(claimId: string, text: string) {
   try {
@@ -31,6 +31,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: MODELS.docGen,
+    providerOptions: gatewayProviderOptions,
     system: `You are generating a professional insurance claim document for submission.
 Format the document with clear sections and use precise, defensible language.
 Every line item MUST include: item name, condition, estimated age, replacement value, and source URL.

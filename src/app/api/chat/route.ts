@@ -2,7 +2,7 @@ import { streamText, tool, convertToModelMessages } from 'ai'
 import { z } from 'zod'
 import { getClaim, flagClaimItem, getPolicyRules } from '@/lib/claims'
 import { triggerPriceWorkflow } from '@/lib/workflow'
-import { MODELS } from '@/lib/ai/models'
+import { MODELS, gatewayProviderOptions } from '@/lib/ai/models'
 import { sanitizeInput } from '@/lib/sanitize'
 
 export async function POST(req: Request) {
@@ -33,6 +33,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: MODELS.chat,
+    providerOptions: gatewayProviderOptions,
     system: `You are a claims assistant helping an insurance adjuster review claim ${claimId}.
 Current claim items: ${JSON.stringify(claim.items)}
 State: ${claim.state}

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { kv } from '@/lib/kv'
 import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
-import { MODELS, anthropic } from '@/lib/ai/models'
+import { MODELS, anthropic, gatewayProviderOptions } from '@/lib/ai/models'
 import type { ClaimItemInput } from '@/lib/workflow'
 
 const PREFERRED_SOURCES: Record<string, string[]> = {
@@ -158,6 +158,7 @@ async function estimatePrice(item: ClaimItemInput) {
   // AI Gateway handles model fallback automatically (Sonnet → GPT-4o → Gemini)
   const { object } = await generateObject({
     model: MODELS.priceNorm,
+    providerOptions: gatewayProviderOptions,
     schema,
     prompt: `You are an insurance pricing assistant. Estimate the current retail replacement cost for this item based on your knowledge. Be conservative — use the lower end of the typical price range.
 

@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     const queryMs = Math.round(performance.now() - t1)
 
     if (rows.length > 0 && (rows[0].distance as number) < 0.15) {
-      const ageMs = Date.now() - new Date(rows[0].cached_at).getTime()
+      const ageMs = Date.now() - new Date(rows[0].cached_at as string | Date).getTime()
       const staleDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
       const stale = staleDays > 90
 

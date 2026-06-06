@@ -1,7 +1,7 @@
 import { generateObject } from 'ai'
 import { z } from 'zod'
 import { sanitizeInput } from '@/lib/sanitize'
-import { MODELS } from '@/lib/ai/models'
+import { MODELS, gatewayProviderOptions } from '@/lib/ai/models'
 
 const ItemSchema = z.object({
   items: z.array(
@@ -51,6 +51,7 @@ export async function POST(req: Request) {
 
     const { object } = await generateObject({
       model: MODELS.extraction,
+      providerOptions: gatewayProviderOptions,
       schema: ItemSchema,
       ...(imageBase64
         ? { messages }
