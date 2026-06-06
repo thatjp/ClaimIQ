@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { kv } from '@/lib/kv'
 import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
-import { MODELS } from '@/lib/ai/models'
+import { MODELS, anthropic } from '@/lib/ai/models'
 import type { ClaimItemInput } from '@/lib/workflow'
 
 const PriceResult = z.object({
@@ -15,10 +15,14 @@ async function lookupPrice(item: ClaimItemInput) {
   'use step'
 
   const { object } = await generateObject({
-    model: MODELS.priceNorm,
-    schema: PriceResult,
-    prompt: `You are an insurance pricing assistant. Estimate the current replacement cost for the following item.
-Return a realistic market price in USD and list 1-3 example retailer URLs where this item can be purchased.
+    model: MODELS.priceSearch,
+    schema: z.object({
+      price: z.number().describe('Current retail replacement cost in USD'),
+      sources: z.array(z.string().url()).min(1).describe('URLs of retailer listings where this item can be purchased — must include at least one'),
+    }),
+    tools: { webSearch: anthropic.tools.webSearch_20260209({ maxUses: 5 }) },
+    maxSteps: 5,
+    prompt: `You are an insurance pricing assistant. Search for the current retail replacement cost of this item.
 
 Item: ${item.name}
 Brand: ${item.brand || 'unknown'}
@@ -26,7 +30,7 @@ Model: ${item.model || 'unknown'}
 Condition: ${item.condition}
 Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
 
-Return the replacement cost as a number (no currency symbol) and source URLs.`,
+Search retailers like Amazon, Best Buy, Home Depot, or the manufacturer's site. You MUST return at least one source URL from your search results — do not estimate without searching first.`,
   })
 
   return object
