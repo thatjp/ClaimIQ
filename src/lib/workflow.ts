@@ -12,10 +12,6 @@ export interface ClaimItemInput {
   quantity?: number
   /** Server-generated id for publishing live trace progress to KV during workflow runs. */
   traceKey?: string
-  /** When set, skip full ladder and price from this claim source URL (first source). */
-  refreshFromSource?: string
-  /** All claim source URLs — preserved on source refresh (first is primary). */
-  priceSources?: string[]
 }
 
 export interface WorkflowResult {

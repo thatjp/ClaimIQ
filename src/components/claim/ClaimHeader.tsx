@@ -15,9 +15,11 @@ interface Claim {
 interface Props {
   claim: Claim
   claimId: string
+  onGenerate: () => void
+  generating: boolean
 }
 
-export function ClaimHeader({ claim, claimId }: Props) {
+export function ClaimHeader({ claim, claimId, onGenerate, generating }: Props) {
   const items = claim.items ?? []
   const readiness = getClaimReadiness(items)
   const canGenerate = readiness.canGenerateDocument
@@ -57,18 +59,19 @@ export function ClaimHeader({ claim, claimId }: Props) {
           All Claims
         </Link>
         <Link
-          href={`/app/claims/${claimId}/add-items`}
+          href={`/app/claims/new?claimId=${claimId}`}
           className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-xs md:text-sm font-medium hover:bg-gray-50 transition-colors"
         >
           + Add Items
         </Link>
         {canGenerate ? (
-          <Link
-            href={`/app/claims/${claimId}/generate`}
-            className="bg-gray-800 text-white px-3 py-1.5 rounded-md text-xs md:text-sm font-medium hover:bg-gray-900 transition-colors"
+          <button
+            onClick={onGenerate}
+            disabled={generating}
+            className="bg-gray-800 text-white px-3 py-1.5 rounded-md text-xs md:text-sm font-medium hover:bg-gray-900 disabled:opacity-60 transition-colors"
           >
-            Generate Document
-          </Link>
+            {generating ? 'Generating…' : 'Generate Document'}
+          </button>
         ) : (
           <span
             title="Approve every line item with price, age, and source URL first"

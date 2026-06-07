@@ -1,7 +1,9 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { resolve } from 'path'
+import { generateObject } from 'ai'
+import { z } from 'zod'
 import { extractItems } from '@/lib/ai/extraction'
-import { estimateItemPrice } from '@/lib/ai/pricing-estimate'
+import { MODELS, gatewayProviderOptions } from '@/lib/ai/models'
 import extractionFixtures from '@/lib/evals/fixtures/extraction.json'
 import pricingFixtures from '@/lib/evals/fixtures/pricing-estimate.json'
 import { scoreExtraction, summarizeExtraction } from '@/lib/evals/scorers/extraction'
@@ -83,7 +85,13 @@ async function runPricingEvals(
 
     const t0 = performance.now()
     try {
-      const price = await estimateItemPrice(fixture.item)
+      const { object } = await generateObject({
+        model: MODELS.priceNorm,
+        providerOptions: gatewayProviderOptions,
+        schema: z.object({ price: z.number() }),
+        prompt: `Estimate the current retail replacement cost in USD for: ${fixture.item.name} (${fixture.item.brand ?? 'unknown brand'}, ${fixture.item.condition} condition). Be conservative.`,
+      })
+      const price = object.price
       results.push(scorePricingEstimate(fixture, price, Math.round(performance.now() - t0)))
     } catch (err) {
       results.push(
