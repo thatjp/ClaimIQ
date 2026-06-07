@@ -3,7 +3,7 @@ import type { ClaimItem } from '@/types/items'
 
 export type PriceLookupItem = Pick<
   ClaimItem,
-  'name' | 'brand' | 'model' | 'category' | 'condition' | 'estimated_age' | 'quantity' | 'price_sources'
+  'name' | 'brand' | 'model' | 'category' | 'condition' | 'quantity' | 'price_sources'
 >
 
 export interface PriceLookupOptions {
@@ -114,7 +114,6 @@ export async function lookupItemPrice(
           model: item.model,
           category: item.category,
           condition: item.condition,
-          estimatedAge: item.estimated_age,
           quantity: item.quantity,
         },
       }),

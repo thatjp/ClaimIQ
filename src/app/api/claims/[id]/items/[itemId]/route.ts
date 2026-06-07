@@ -13,15 +13,6 @@ export async function PATCH(
 
   const updates: UpdateClaimItemInput = {}
 
-  if ('estimated_age' in body) {
-    const age = body.estimated_age
-    updates.estimated_age =
-      age === null || age === '' ? null : Number(age)
-    if (updates.estimated_age != null && Number.isNaN(updates.estimated_age)) {
-      return Response.json({ error: 'Invalid estimated_age' }, { status: 400 })
-    }
-  }
-
   if ('price_sources' in body) {
     if (!Array.isArray(body.price_sources)) {
       return Response.json({ error: 'price_sources must be an array' }, { status: 400 })
@@ -78,14 +69,12 @@ export async function PATCH(
       const candidate = {
         ...item,
         ...updates,
-        estimated_age:
-          'estimated_age' in updates ? (updates.estimated_age ?? undefined) : item.estimated_age,
         price_sources: updates.price_sources ?? item.price_sources,
         price: 'price' in updates ? (updates.price ?? undefined) : item.price,
       }
       if (!canApproveItem(candidate)) {
         return Response.json(
-          { error: 'Item must have price, source URL, and age before approval' },
+          { error: 'Item must have price and source URL before approval' },
           { status: 400 }
         )
       }

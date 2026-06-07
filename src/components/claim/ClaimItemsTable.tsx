@@ -128,7 +128,6 @@ export function ClaimItemsTable({ items, pricingState, notFoundIds, onRefreshPri
                       )}
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-500">
                         <span className="capitalize">{item.condition}</span>
-                        {item.estimated_age && <span>{item.estimated_age}y</span>}
                         <span>Qty {item.quantity}</span>
                       </div>
                       {item.price && (
@@ -169,7 +168,6 @@ export function ClaimItemsTable({ items, pricingState, notFoundIds, onRefreshPri
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Item</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Condition</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Age</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Qty</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Price</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Source</th>
@@ -193,7 +191,6 @@ export function ClaimItemsTable({ items, pricingState, notFoundIds, onRefreshPri
                         )}
                       </td>
                       <td className="px-4 py-3 capitalize text-gray-700">{item.condition}</td>
-                      <td className="px-4 py-3 text-gray-700">{item.estimated_age ? `${item.estimated_age}y` : '—'}</td>
                       <td className="px-4 py-3 text-gray-700">{item.quantity}</td>
                       <td className="px-4 py-3">
                         {item.price ? (
@@ -233,7 +230,7 @@ export function ClaimItemsTable({ items, pricingState, notFoundIds, onRefreshPri
               {items.some((i) => i.price) && (
                 <tfoot>
                   <tr className="border-t border-gray-200 bg-gray-50">
-                    <td colSpan={5} className="px-4 py-3 text-sm font-medium text-gray-700 text-right">
+                    <td colSpan={4} className="px-4 py-3 text-sm font-medium text-gray-700 text-right">
                       Total Replacement Cost:
                     </td>
                     <td className="px-4 py-3 text-sm font-semibold text-gray-900">${total.toLocaleString()}</td>

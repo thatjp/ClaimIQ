@@ -8,7 +8,6 @@ export interface ClaimItem {
   model?: string
   category: string
   condition: string
-  estimated_age?: number
   quantity: number
   adjuster_notes?: string
   price?: number
@@ -87,14 +86,11 @@ export function normalizeClaimItem(row: ClaimItem): ClaimItem {
     ...row,
     price_sources: parseJsonArray(row.price_sources) ?? row.price_sources,
     approved: row.approved ?? false,
-    estimated_age:
-      row.estimated_age != null ? Number(row.estimated_age) : undefined,
     price: row.price != null ? Number(row.price) : undefined,
   }
 }
 
 export interface UpdateClaimItemInput {
-  estimated_age?: number | null
   price_sources?: string[]
   price?: number | null
   price_source?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'walmart' | 'bestbuy' | 'manual'
@@ -123,8 +119,6 @@ export async function updateClaimItem(
     const existing = normalizeClaimItem(itemRows[0] as unknown as ClaimItem)
     const merged: ClaimItem = {
       ...existing,
-      estimated_age:
-        'estimated_age' in updates ? (updates.estimated_age ?? undefined) : existing.estimated_age,
       price_sources:
         'price_sources' in updates ? updates.price_sources : existing.price_sources,
       price: 'price' in updates ? (updates.price ?? undefined) : existing.price,
@@ -135,7 +129,7 @@ export async function updateClaimItem(
     if (updates.approved === true) {
       const { canApproveItem } = await import('@/lib/claims/grounding')
       if (!canApproveItem(merged)) {
-        return { item: null, error: 'Item is missing required source URL, age, or price' }
+        return { item: null, error: 'Item is missing required source URL or price' }
       }
     }
 
@@ -147,7 +141,6 @@ export async function updateClaimItem(
     const { rows } = await db`
       UPDATE claim_items
       SET
-        estimated_age = ${merged.estimated_age ?? null},
         price_sources = ${priceSourcesJson},
         price = ${merged.price ?? null},
         price_source = ${merged.price_source ?? null},

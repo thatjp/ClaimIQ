@@ -1,7 +1,7 @@
 import type { ClaimItem } from '@/types/items'
 
 export interface GroundingIssue {
-  field: 'source' | 'age' | 'price' | 'approval'
+  field: 'source' | 'price' | 'approval'
   message: string
 }
 
@@ -20,10 +20,6 @@ export function getValidSources(sources?: string[] | null): string[] {
 
 export function getItemGroundingIssues(item: ClaimItem): GroundingIssue[] {
   const issues: GroundingIssue[] = []
-
-  if (item.estimated_age == null || item.estimated_age < 0) {
-    issues.push({ field: 'age', message: 'Estimated age is required' })
-  }
 
   if (getValidSources(item.price_sources).length === 0) {
     issues.push({ field: 'source', message: 'At least one source URL is required' })

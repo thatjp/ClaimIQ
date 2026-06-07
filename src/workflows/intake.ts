@@ -22,7 +22,6 @@ interface RawItem {
   model?: string | null
   category: string
   condition: string
-  estimatedAge?: number | null
   quantity: number
   adjusterNotes?: string | null
 }
@@ -34,7 +33,6 @@ interface PersistedItem {
   model?: string | null
   category: string
   condition: string
-  estimated_age?: number | null
   quantity: number
 }
 
@@ -53,7 +51,7 @@ async function persistItemsStep(claimId: string, items: RawItem[]): Promise<Pers
       db`
         INSERT INTO claim_items (
           claim_id, name, brand, model, category, condition,
-          estimated_age, quantity, adjuster_notes, flagged
+          quantity, adjuster_notes, flagged
         )
         VALUES (
           ${claimId},
@@ -62,12 +60,11 @@ async function persistItemsStep(claimId: string, items: RawItem[]): Promise<Pers
           ${item.model ?? null},
           ${item.category},
           ${item.condition},
-          ${item.estimatedAge ?? null},
           ${item.quantity ?? 1},
           ${item.adjusterNotes ?? null},
           false
         )
-        RETURNING id, name, brand, model, category, condition, estimated_age, quantity
+        RETURNING id, name, brand, model, category, condition, quantity
       `
     )
   )
@@ -201,7 +198,6 @@ export async function claimIntakeWorkflow(input: IntakeInput): Promise<void> {
               model: item.model ?? undefined,
               category: item.category,
               condition: item.condition,
-              estimatedAge: item.estimated_age ?? undefined,
               quantity: item.quantity,
             })
             if (workflowResult.price != null) {

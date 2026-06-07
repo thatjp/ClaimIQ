@@ -17,7 +17,7 @@ export async function POST(
         db`
           INSERT INTO claim_items (
             claim_id, name, brand, model, category, condition,
-            estimated_age, quantity, adjuster_notes, price, price_sources, flagged
+            quantity, adjuster_notes, price, price_sources, flagged
           )
           VALUES (
             ${claimId},
@@ -26,7 +26,6 @@ export async function POST(
             ${item.model ?? null},
             ${item.category},
             ${item.condition},
-            ${item.estimatedAge ?? null},
             ${item.quantity ?? 1},
             ${item.adjusterNotes ?? null},
             ${item.price ?? null},

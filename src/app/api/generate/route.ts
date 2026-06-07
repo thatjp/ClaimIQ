@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   if (!readiness.canGenerateDocument) {
     return Response.json(
       {
-        error: 'All line items must be approved with price, age, and source URL before generating a document',
+        error: 'All line items must be approved with price and source URL before generating a document',
         readiness,
       },
       { status: 422 }
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     providerOptions: gatewayProviderOptions,
     system: `You are generating a professional insurance claim document for submission.
 Format the document with clear sections and use precise, defensible language.
-Every line item MUST include: item name, condition, estimated age, replacement value, and source URL.
+Every line item MUST include: item name, condition, replacement value, and source URL.
 Flag any items where the price source is older than 90 days with [STALE PRICE - VERIFY].
 Flag any items without a price source with [UNSOURCED - REQUIRES VERIFICATION].
 Use standard insurance industry formatting with dollar amounts, dates, and policy references.

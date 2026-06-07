@@ -52,7 +52,6 @@ export function ItemReviewTable({
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-500">
                   <span className="capitalize">{item.category}</span>
                   <span className="capitalize">{item.condition}</span>
-                  {item.estimatedAge && <span>{item.estimatedAge}y</span>}
                   <span>Qty {item.quantity}</span>
                 </div>
                 {(step === 'pricing' || step === 'done' || item.priceTrace || pricingTraces[i]) && (
@@ -111,14 +110,6 @@ export function ItemReviewTable({
               </select>
               <input
                 type="number"
-                min={0}
-                placeholder="Age (yrs)"
-                value={newItem.estimatedAge ?? ''}
-                onChange={(e) => onNewItemChange({ ...newItem, estimatedAge: e.target.value ? Number(e.target.value) : undefined })}
-                className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-              <input
-                type="number"
                 min={1}
                 placeholder="Qty"
                 value={newItem.quantity}
@@ -142,7 +133,6 @@ export function ItemReviewTable({
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Item</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Category</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Condition</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Age (yrs)</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Qty</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Price</th>
               <th className="px-4 py-3"></th>
@@ -168,7 +158,6 @@ export function ItemReviewTable({
                 </td>
                 <td className="px-4 py-3 text-gray-700 capitalize">{item.category}</td>
                 <td className="px-4 py-3 text-gray-700 capitalize">{item.condition}</td>
-                <td className="px-4 py-3 text-gray-700">{item.estimatedAge ?? '—'}</td>
                 <td className="px-4 py-3 text-gray-700">{item.quantity}</td>
                 <td className="px-4 py-3"><PriceCell item={item} /></td>
                 <td className="px-4 py-3 text-right">
@@ -213,16 +202,6 @@ export function ItemReviewTable({
                   >
                     {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
-                </td>
-                <td className="px-4 py-3">
-                  <input
-                    type="number"
-                    min={0}
-                    placeholder="—"
-                    value={newItem.estimatedAge ?? ''}
-                    onChange={(e) => onNewItemChange({ ...newItem, estimatedAge: e.target.value ? Number(e.target.value) : undefined })}
-                    className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
                 </td>
                 <td className="px-4 py-3">
                   <input

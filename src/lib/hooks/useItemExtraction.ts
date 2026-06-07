@@ -180,7 +180,6 @@ export function useItemExtraction(claimId?: string) {
             model: item.model,
             category: item.category,
             condition: item.condition,
-            estimated_age: item.estimatedAge,
             quantity: item.quantity,
           },
           {
@@ -206,7 +205,6 @@ export function useItemExtraction(claimId?: string) {
               await patchClaimItem(claimId, item.claimItemId, {
                 price: outcome.price,
                 price_sources: outcome.sources ?? [],
-                estimated_age: item.estimatedAge ?? null,
               })
             } catch (err) {
               console.error(err)

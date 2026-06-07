@@ -6,7 +6,6 @@ export interface ExtractedItem {
   model?: string
   category: string
   condition: string
-  estimatedAge?: number
   quantity: number
   adjusterNotes?: string
   price?: number
@@ -25,7 +24,6 @@ export const BLANK_ITEM: ExtractedItem = {
   model: '',
   category: 'other',
   condition: 'good',
-  estimatedAge: undefined,
   quantity: 1,
 }
 
@@ -39,7 +37,6 @@ export interface ClaimItem {
   model?: string
   category: string
   condition: string
-  estimated_age?: number
   quantity: number
   adjuster_notes?: string
   price?: number

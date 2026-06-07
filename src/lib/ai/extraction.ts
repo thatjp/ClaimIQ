@@ -19,7 +19,6 @@ export const ItemSchema = z.object({
         'other',
       ]),
       condition: z.enum(['new', 'good', 'fair', 'poor']),
-      estimatedAge: z.number().nullable(),
       quantity: z.number(),
       adjusterNotes: z.string().nullable(),
     })
@@ -58,7 +57,7 @@ export async function extractItems(text: string, imageBase64?: string | null) {
       : {
           prompt: `Extract every distinct item from this insurance claim description.
 Be conservative — only extract items explicitly mentioned.
-For each item, identify: name, brand (if mentioned), model (if mentioned), category, estimated condition, approximate age in years (if determinable), and quantity.
+For each item, identify: name, brand (if mentioned), model (if mentioned), category, estimated condition, and quantity.
 Input: ${sanitizedText}`,
         }),
   })
