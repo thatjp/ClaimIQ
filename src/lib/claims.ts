@@ -12,7 +12,7 @@ export interface ClaimItem {
   quantity: number
   adjuster_notes?: string
   price?: number
-  price_source?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'manual'
+  price_source?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'walmart' | 'bestbuy' | 'manual'
   price_sources?: string[]
   price_cached_at?: string
   approved?: boolean
@@ -97,7 +97,7 @@ export interface UpdateClaimItemInput {
   estimated_age?: number | null
   price_sources?: string[]
   price?: number | null
-  price_source?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'manual'
+  price_source?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'walmart' | 'bestbuy' | 'manual'
   approved?: boolean
 }
 

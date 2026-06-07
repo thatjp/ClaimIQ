@@ -154,6 +154,110 @@ Do NOT estimate — only return a price you found on Amazon.`,
   }
 }
 
+async function lookupWalmart(item: ClaimItemInput): Promise<StepOutcome<{ price: number; sources: string[] }>> {
+  'use step'
+
+  const schema = z.object({
+    price: z.number().describe('Current retail replacement cost in USD on Walmart'),
+    sources: z
+      .array(z.string().url())
+      .min(1)
+      .describe('Walmart product listing URLs (walmart.com)'),
+  })
+
+  const t0 = performance.now()
+  try {
+    const { experimental_output, usage } = await generateText({
+      model: MODELS.priceSearch,
+      experimental_output: Output.object({ schema }),
+      tools: { webSearch: anthropic.tools.webSearch_20260209({ maxUses: 4 }) },
+      stopWhen: stepCountIs(4),
+      prompt: `You are an insurance pricing assistant. Search Walmart (walmart.com) for the current retail replacement cost of this item.
+
+Item: ${item.name}
+Brand: ${item.brand || 'unknown'}
+Model: ${item.model || 'unknown'}
+Condition: ${item.condition}
+Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
+Category: ${item.category || 'unknown'}
+
+Search ONLY on walmart.com — find the closest matching new or like-new retail listing.
+Return the price in USD and at least one walmart.com product URL from your search results.
+Do NOT estimate — only return a price you found on Walmart.`,
+    })
+
+    const durationMs = stepElapsed(t0)
+    const sources = (experimental_output?.sources ?? []).filter((url) => url.includes('walmart.com'))
+    const hit = !!experimental_output?.price && sources.length > 0
+
+    log('walmart', hit, durationMs, {
+      item: item.name,
+      price: experimental_output?.price,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+    })
+
+    if (!hit) return { value: null, durationMs, detail: sources.length ? 'no price on Walmart' : 'no Walmart listings' }
+    return { value: { price: experimental_output!.price, sources }, durationMs, detail: `${sources.length} listing${sources.length === 1 ? '' : 's'}` }
+  } catch (err) {
+    const durationMs = stepElapsed(t0)
+    log('walmart', false, durationMs, { item: item.name, error: err instanceof Error ? err.message : String(err) })
+    return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+async function lookupBestBuy(item: ClaimItemInput): Promise<StepOutcome<{ price: number; sources: string[] }>> {
+  'use step'
+
+  const schema = z.object({
+    price: z.number().describe('Current retail replacement cost in USD on Best Buy'),
+    sources: z
+      .array(z.string().url())
+      .min(1)
+      .describe('Best Buy product listing URLs (bestbuy.com)'),
+  })
+
+  const t0 = performance.now()
+  try {
+    const { experimental_output, usage } = await generateText({
+      model: MODELS.priceSearch,
+      experimental_output: Output.object({ schema }),
+      tools: { webSearch: anthropic.tools.webSearch_20260209({ maxUses: 4 }) },
+      stopWhen: stepCountIs(4),
+      prompt: `You are an insurance pricing assistant. Search Best Buy (bestbuy.com) for the current retail replacement cost of this item.
+
+Item: ${item.name}
+Brand: ${item.brand || 'unknown'}
+Model: ${item.model || 'unknown'}
+Condition: ${item.condition}
+Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
+Category: ${item.category || 'unknown'}
+
+Search ONLY on bestbuy.com — find the closest matching new or like-new retail listing.
+Return the price in USD and at least one bestbuy.com product URL from your search results.
+Do NOT estimate — only return a price you found on Best Buy.`,
+    })
+
+    const durationMs = stepElapsed(t0)
+    const sources = (experimental_output?.sources ?? []).filter((url) => url.includes('bestbuy.com'))
+    const hit = !!experimental_output?.price && sources.length > 0
+
+    log('bestbuy', hit, durationMs, {
+      item: item.name,
+      price: experimental_output?.price,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+    })
+
+    if (!hit) return { value: null, durationMs, detail: sources.length ? 'no price on Best Buy' : 'no Best Buy listings' }
+    return { value: { price: experimental_output!.price, sources }, durationMs, detail: `${sources.length} listing${sources.length === 1 ? '' : 's'}` }
+  } catch (err) {
+    const durationMs = stepElapsed(t0)
+    log('bestbuy', false, durationMs, { item: item.name, error: err instanceof Error ? err.message : String(err) })
+    return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 async function cachePrice(item: ClaimItemInput, price: number, sources: string[]) {
   'use step'
 
@@ -175,12 +279,12 @@ async function cachePrice(item: ClaimItemInput, price: number, sources: string[]
   log('cache_write', true, Math.round(performance.now() - t0), { item: item.name, price })
 }
 
-async function publishLiveTrace(traceKey: string | undefined, workflowTrace: PriceTraceStep[]) {
+async function publishLiveTrace(traceKey: string | undefined, steps: PriceTraceStep[]) {
   'use step'
 
   if (!traceKey) return
   try {
-    await updateLiveTrace(traceKey, { workflowTrace })
+    await updateLiveTrace(traceKey, { workflowTrace: steps })
   } catch (err) {
     console.warn('[price-workflow] live trace update failed:', err instanceof Error ? err.message : err)
   }
@@ -192,27 +296,42 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
   const workflowTrace: PriceTraceStep[] = []
   const traceKey = item.traceKey
 
-  // Layer 3a: eBay sold listings
-  const ebay = await lookupEbay(item)
-  if (ebay.value) {
-    workflowTrace.push(traceStep('ebay', 'hit', ebay.durationMs, ebay.detail))
-    await publishLiveTrace(traceKey, workflowTrace)
-    await cachePrice(item, ebay.value.price, ebay.value.sources)
-    return { price: ebay.value.price, sources: ebay.value.sources, source: 'ebay' as const, trace: workflowTrace }
-  }
-  workflowTrace.push(traceStep('ebay', 'miss', ebay.durationMs, ebay.detail))
+  // Run all sources in parallel — they're fully independent
+  await publishLiveTrace(traceKey, [
+    traceStep('ebay',    'running'),
+    traceStep('amazon',  'running'),
+    traceStep('walmart', 'running'),
+    traceStep('bestbuy', 'running'),
+  ])
+
+  const [ebay, amazon, walmart, bestbuy] = await Promise.all([
+    lookupEbay(item),
+    lookupAmazon(item),
+    lookupWalmart(item),
+    lookupBestBuy(item),
+  ])
+
+  workflowTrace.push(
+    traceStep('ebay',    ebay.value    ? 'hit' : 'miss', ebay.durationMs,    ebay.detail),
+    traceStep('amazon',  amazon.value  ? 'hit' : 'miss', amazon.durationMs,  amazon.detail),
+    traceStep('walmart', walmart.value ? 'hit' : 'miss', walmart.durationMs, walmart.detail),
+    traceStep('bestbuy', bestbuy.value ? 'hit' : 'miss', bestbuy.durationMs, bestbuy.detail),
+  )
   await publishLiveTrace(traceKey, workflowTrace)
 
-  // Layer 3b: Amazon retail search via AI SDK web search tool
-  const amazon = await lookupAmazon(item)
-  if (amazon.value) {
-    workflowTrace.push(traceStep('amazon', 'hit', amazon.durationMs, amazon.detail))
-    await publishLiveTrace(traceKey, workflowTrace)
-    await cachePrice(item, amazon.value.price, amazon.value.sources)
-    return { price: amazon.value.price, sources: amazon.value.sources, source: 'amazon' as const, trace: workflowTrace }
+  // Take the lowest price across all hits — most defensible for insurance replacement cost
+  const hits = [
+    ebay.value    ? { ...ebay.value,    source: 'ebay'    as const } : null,
+    amazon.value  ? { ...amazon.value,  source: 'amazon'  as const } : null,
+    walmart.value ? { ...walmart.value, source: 'walmart' as const } : null,
+    bestbuy.value ? { ...bestbuy.value, source: 'bestbuy' as const } : null,
+  ].filter(Boolean) as Array<{ price: number; sources: string[]; source: 'ebay' | 'amazon' | 'walmart' | 'bestbuy' }>
+
+  if (hits.length > 0) {
+    const best = hits.reduce((a, b) => a.price <= b.price ? a : b)
+    await cachePrice(item, best.price, best.sources)
+    return { price: best.price, sources: best.sources, source: best.source, trace: workflowTrace }
   }
-  workflowTrace.push(traceStep('amazon', 'miss', amazon.durationMs, amazon.detail))
-  await publishLiveTrace(traceKey, workflowTrace)
 
   return { price: null, sources: [], source: 'not_found' as const, trace: workflowTrace }
 }

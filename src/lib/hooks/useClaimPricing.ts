@@ -17,6 +17,8 @@ const STRATEGY_LABELS: Record<string, string> = {
   vector_cache_stale: 'Stale Cache',
   ebay:               'eBay',
   amazon:             'Amazon',
+  walmart:            'Walmart',
+  bestbuy:            'Best Buy',
   manual:             'Manual',
 }
 

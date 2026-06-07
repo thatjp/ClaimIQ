@@ -26,6 +26,8 @@ function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
     vector_cache_stale: { label: 'Stale Cache', className: 'text-orange-500', icon: '⏳', title: 'Semantic match older than 90 days — may not reflect current market price' },
     ebay:         { label: 'eBay Sold',    className: 'text-yellow-600', icon: '🛒', title: 'Average of recent sold listings via eBay Finding API' },
     amazon:       { label: 'Amazon',       className: 'text-orange-600', icon: '📦', title: 'Retrieved via Amazon product search' },
+    walmart:      { label: 'Walmart',      className: 'text-blue-700',   icon: '🛍️', title: 'Retrieved via Walmart product search' },
+    bestbuy:      { label: 'Best Buy',     className: 'text-blue-500',   icon: '🔵', title: 'Retrieved via Best Buy product search' },
     manual:       { label: 'Manual Entry', className: 'text-gray-500',   icon: '✏️', title: 'Price entered manually by adjuster' },
   }
   const c = config[source!]

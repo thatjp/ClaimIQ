@@ -5,7 +5,7 @@ import type { PriceTraceStep } from '@/lib/pricing/trace'
 interface WorkflowResult {
   price: number
   sources: string[]
-  source: 'ebay' | 'amazon' | 'not_found' | null
+  source: 'ebay' | 'amazon' | 'walmart' | 'bestbuy' | 'not_found' | null
   trace?: PriceTraceStep[]
 }
 
