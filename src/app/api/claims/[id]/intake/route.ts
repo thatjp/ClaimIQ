@@ -27,6 +27,12 @@ export async function POST(
 
   try {
     const result = await triggerIntakeWorkflow(claimId, body.text, body.imageBase64)
+    // Persist so dashboard can reconnect to in-flight runs after page navigation
+    await db`
+      UPDATE claims
+      SET intake_run_id = ${result.workflowRunId}, intake_key = ${result.intakeKey}
+      WHERE id = ${claimId}
+    `
     return Response.json(result, { status: 202 })
   } catch (err) {
     console.error('[intake] Failed to trigger workflow:', err)

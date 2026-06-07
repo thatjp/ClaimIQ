@@ -1,118 +1,9 @@
 'use client'
 
-import { Suspense, useRef, useState, useEffect } from 'react'
+import { Suspense, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { US_STATES } from '@/lib/constants'
 import { useIntakeWorkflow } from '@/lib/hooks/useIntakeWorkflow'
-import type { IntakeProgressItem } from '@/lib/hooks/useIntakeWorkflow'
-
-function PriceStatusCell({ item }: { item: IntakeProgressItem }) {
-  if (item.priceStatus === 'queued')  return <span className="text-gray-400 text-xs">Queued</span>
-  if (item.priceStatus === 'pricing') return (
-    <span className="flex items-center gap-1.5 text-yellow-600 text-xs">
-      <span className="inline-block w-3 h-3 border border-yellow-500 border-t-transparent rounded-full animate-spin" />
-      Pricing...
-    </span>
-  )
-  if (item.priceStatus === 'found')   return <span className="text-green-600 text-xs">Found</span>
-  return <span className="text-red-500 text-xs">Not found</span>
-}
-
-function ProcessingTable({ items }: { items: IntakeProgressItem[] }) {
-  const seenIds = useRef<Set<string>>(new Set())
-  const seenPrices = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    items.forEach((item) => {
-      seenIds.current.add(item.id)
-      if (item.price != null) seenPrices.current.add(item.id)
-    })
-  })
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-100 bg-gray-50">
-            <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Item</th>
-            <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-            <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Price</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {items.map((item, i) => {
-            const isNew = !seenIds.current.has(item.id)
-            const isNewPrice = item.price != null && !seenPrices.current.has(item.id)
-            return (
-              <tr
-                key={item.id}
-                className={isNew ? 'row-enter' : ''}
-                style={isNew ? { animationDelay: `${i * 40}ms` } : undefined}
-              >
-                <td className="px-4 py-2.5 font-medium text-gray-900">{item.name}</td>
-                <td className="px-4 py-2.5"><PriceStatusCell item={item} /></td>
-                <td className="px-4 py-2.5 text-right">
-                  {item.price != null
-                    ? <span
-                        key={`price-${item.id}-${item.price}`}
-                        className={`font-medium text-green-700${isNewPrice ? ' price-enter' : ''}`}
-                      >
-                        ${item.price.toLocaleString()}
-                      </span>
-                    : <span className="text-gray-300">—</span>
-                  }
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function ProcessingView({
-  claimId,
-  progress,
-  onNavigate,
-}: {
-  claimId: string
-  progress: { phase: string; items: IntakeProgressItem[]; error?: string } | null
-  onNavigate: () => void
-}) {
-  const phase = progress?.phase ?? 'extracting'
-  const items = progress?.items ?? []
-  const found = items.filter((i) => i.priceStatus === 'found').length
-
-  return (
-    <div className="p-4 md:p-8 max-w-2xl">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-1">Processing Claim</h1>
-      <p className="text-sm text-gray-500 mb-6">
-        You can close this tab — the claim will finish processing in the background.
-      </p>
-
-      <div className="flex items-center gap-3 mb-6">
-        <div className="animate-spin w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full shrink-0" />
-        <span className="text-sm font-medium text-gray-700">
-          {phase === 'extracting' && 'Extracting items from description...'}
-          {phase === 'pricing'    && `Pricing items — ${found} of ${items.length} done`}
-          {phase === 'done'       && 'All done — redirecting...'}
-        </span>
-      </div>
-
-      {(phase === 'pricing' || phase === 'done') && items.length > 0 && (
-        <ProcessingTable items={items} />
-      )}
-
-      <button
-        onClick={onNavigate}
-        className="text-sm text-blue-600 hover:underline"
-      >
-        Go to claim workspace →
-      </button>
-    </div>
-  )
-}
 
 function NewClaimForm() {
   const router = useRouter()
@@ -195,29 +86,16 @@ function NewClaimForm() {
         setClaimId(claim.id)
       }
 
-      await trigger(
-        resolvedClaimId!,
-        description,
-        imageBase64,
-        () => router.push(`/app/claims/${resolvedClaimId}`)
-      )
+      // Wait until the workflow is triggered (intake_run_id written to DB), then redirect.
+      // Pricing continues as a durable background workflow — dashboard reconnects via polling.
+      await trigger(resolvedClaimId!, description, imageBase64, () => {})
+      router.push('/app/dashboard')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'An error occurred')
     }
   }
 
-  // Processing / polling view
-  if (intakeState.stage === 'triggering' || intakeState.stage === 'polling' || intakeState.stage === 'done') {
-    return (
-      <ProcessingView
-        claimId={claimId ?? ''}
-        progress={intakeState.progress}
-        onNavigate={() => router.push(`/app/claims/${claimId}`)}
-      />
-    )
-  }
-
-  // Error view
+  // Error view (only shown if trigger fails synchronously before redirect)
   if (intakeState.stage === 'error') {
     return (
       <div className="p-4 md:p-8 max-w-2xl">
@@ -225,19 +103,16 @@ function NewClaimForm() {
         <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-100 mb-4">
           {intakeState.progress?.error ?? intakeState.triggerError ?? 'An unexpected error occurred'}
         </p>
-        <div className="flex gap-3">
-          <button
-            onClick={() => router.push(`/app/claims/${claimId}`)}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Go to claim workspace
-          </button>
-        </div>
+        <button
+          onClick={() => router.push('/app/dashboard')}
+          className="text-sm text-blue-600 hover:underline"
+        >
+          Back to dashboard
+        </button>
       </div>
     )
   }
 
-  // Claim form
   return (
     <div className="p-4 md:p-8">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">
@@ -360,9 +235,12 @@ function NewClaimForm() {
           )}
           <button
             type="submit"
-            className="bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+            disabled={intakeState.stage === 'triggering'}
+            className="bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {isAdding ? 'Extract & Price Items' : 'Create Claim & Extract Items'}
+            {intakeState.stage === 'triggering'
+              ? 'Starting…'
+              : isAdding ? 'Extract & Price Items' : 'Create Claim & Extract Items'}
           </button>
         </div>
       </form>

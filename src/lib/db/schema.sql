@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS claims (
   policy_type TEXT NOT NULL,
   date_of_loss DATE NOT NULL,
   status TEXT NOT NULL DEFAULT 'open',
+  intake_run_id TEXT,
+  intake_key TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

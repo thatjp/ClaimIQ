@@ -5,7 +5,8 @@ const DEMO_USER_ID = 'demo'
 export async function GET() {
   try {
     const { rows } = await db`
-      SELECT * FROM claims
+      SELECT id, state, policy_type, date_of_loss, status, intake_run_id, intake_key, created_at
+      FROM claims
       WHERE user_id = ${DEMO_USER_ID}
       ORDER BY created_at DESC
     `
