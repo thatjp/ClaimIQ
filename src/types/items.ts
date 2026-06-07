@@ -41,7 +41,7 @@ export interface ClaimItem {
   adjuster_notes?: string
   price?: number
   price_sources?: string[]
-  priceSource?: 'kv_cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'serp' | 'manual'
+  priceSource?: 'kv_cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'walmart' | 'home_depot' | 'manual'
   priceTrace?: PriceTraceStep[]
   priceStale?: boolean
   approved?: boolean

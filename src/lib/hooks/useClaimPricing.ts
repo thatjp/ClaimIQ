@@ -15,7 +15,6 @@ const STRATEGY_LABELS: Record<string, string> = {
   kv_cache:           'KV Cache',
   vector_cache:       'Vector Cache',
   vector_cache_stale: 'Stale Cache',
-  ebay:               'eBay',
   serp:               'Google Shopping',
   manual:             'Manual',
 }

@@ -4,16 +4,15 @@ import type { PriceLayer, PriceTraceStep } from '@/lib/pricing/trace'
 export interface LivePriceTraceState {
   syncTrace: PriceTraceStep[]
   workflowTrace: PriceTraceStep[]
-  activeLayer?: PriceLayer
 }
 
 const TRACE_TTL = 60 * 60 * 24
 
-export function liveTraceKey(traceKey: string) {
+function liveTraceKey(traceKey: string) {
   return `price-trace:${traceKey}`
 }
 
-export function liveTraceRunKey(workflowRunId: string) {
+function liveTraceRunKey(workflowRunId: string) {
   return `price-trace-run:${workflowRunId}`
 }
 
@@ -22,11 +21,7 @@ export async function initLiveTrace(
   workflowRunId: string,
   syncTrace: PriceTraceStep[]
 ) {
-  const state: LivePriceTraceState = {
-    syncTrace,
-    workflowTrace: [],
-    activeLayer: 'ebay',
-  }
+  const state: LivePriceTraceState = { syncTrace, workflowTrace: [] }
   await kv.set(liveTraceKey(traceKey), state, { ex: TRACE_TTL })
   await kv.set(liveTraceRunKey(workflowRunId), traceKey, { ex: TRACE_TTL })
 }
@@ -51,7 +46,6 @@ export async function updateLiveTrace(
   const next: LivePriceTraceState = {
     syncTrace: update.syncTrace ?? current.syncTrace,
     workflowTrace: update.workflowTrace ?? current.workflowTrace,
-    activeLayer: 'activeLayer' in update ? update.activeLayer : current.activeLayer,
   }
   await kv.set(liveTraceKey(traceKey), next, { ex: TRACE_TTL })
 }

@@ -1,10 +1,11 @@
 import { kv } from '@/lib/kv'
 import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
-import { traceStep, type PriceTraceStep } from '@/lib/pricing/trace'
+import { traceStep, type PriceTraceStep, type PriceLayer } from '@/lib/pricing/trace'
 import { updateLiveTrace } from '@/lib/pricing/live-trace'
 import type { ClaimItemInput } from '@/lib/workflow'
 
+// eBay Finding API category IDs
 const EBAY_CATEGORY_MAP: Record<string, string> = {
   electronics: '293',
   appliances:  '20710',
@@ -12,8 +13,21 @@ const EBAY_CATEGORY_MAP: Record<string, string> = {
   clothing:    '11450',
   jewelry:     '281',
   tools:       '631',
-  vehicles:    '6001',
   other:       '',
+}
+
+// Which SerpAPI engines to try per category, in waterfall order.
+// Sources not listed for a category are skipped — no wasted API calls.
+type SerpEngine = 'amazon' | 'walmart' | 'home_depot'
+
+const CATEGORY_SOURCES: Record<string, SerpEngine[]> = {
+  electronics: ['amazon', 'walmart'],
+  appliances:  ['home_depot', 'amazon', 'walmart'],
+  furniture:   ['amazon', 'walmart'],
+  clothing:    ['amazon', 'walmart'],
+  jewelry:     ['amazon'],
+  tools:       ['home_depot', 'amazon', 'walmart'],
+  other:       ['amazon', 'walmart'],
 }
 
 function log(layer: string, hit: boolean, durationMs: number, meta?: Record<string, unknown>) {
@@ -24,13 +38,21 @@ function stepElapsed(t0: number) {
   return Math.round(performance.now() - t0)
 }
 
+type PriceHit = { price: number; sources: string[] }
+
 interface StepOutcome<T> {
   value: T | null
   durationMs: number
   detail?: string
 }
 
-async function lookupEbay(item: ClaimItemInput): Promise<StepOutcome<{ price: number; sources: string[] }>> {
+function serpQuery(item: ClaimItemInput): string {
+  return [item.name, item.brand, item.model].filter(Boolean).join(' ')
+}
+
+// --- eBay (direct Finding API, no SerpAPI cost) ---
+
+async function lookupEbay(item: ClaimItemInput): Promise<StepOutcome<PriceHit>> {
   'use step'
 
   const t0 = performance.now()
@@ -88,53 +110,92 @@ async function lookupEbay(item: ClaimItemInput): Promise<StepOutcome<{ price: nu
   }
 }
 
+// --- SerpAPI dedicated product engine fetchers ---
 
-// Category → preferred retail sites for insurance replacement comps.
-// 'other' has no site filter — falls back to broad Google Shopping.
-const CATEGORY_SITES: Record<string, string[]> = {
-  electronics: ['bestbuy.com', 'amazon.com'],
-  appliances:  ['homedepot.com', 'lowes.com'],
-  furniture:   ['wayfair.com', 'target.com'],
-  clothing:    ['macys.com', 'target.com'],
-  jewelry:     ['jared.com', 'zales.com'],
-  tools:       ['homedepot.com', 'lowes.com'],
-}
+async function fetchAmazon(item: ClaimItemInput, apiKey: string): Promise<PriceHit | null> {
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    engine: 'amazon',
+    k: serpQuery(item),
+    amazon_domain: 'amazon.com',
+  })
+  const res = await fetch(`https://serpapi.com/search?${params}`)
+  if (!res.ok) return null
+  const data = await res.json()
 
-type SerpResult = { price?: string; extracted_price?: number; link?: string; product_link?: string }
-
-function parseSerpResults(results: SerpResult[]): { price: number; sources: string[] } | null {
+  type AmazonResult = { extracted_price?: number; price?: string; link?: string; asin?: string }
+  const results: AmazonResult[] = data.organic_results ?? []
   const priced = results.filter((r) => r.extracted_price != null || r.price)
   if (!priced.length) return null
 
   const prices = priced
-    .map((r) => r.extracted_price ?? parseFloat(r.price!.replace(/[^0-9.]/g, '')))
+    .map((r) => r.extracted_price ?? parseFloat((r.price ?? '').replace(/[^0-9.]/g, '')))
     .filter((p) => !isNaN(p) && p > 0)
   if (!prices.length) return null
 
-  const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
-  const sources = priced.map((r) => r.product_link ?? r.link).filter((u): u is string => !!u).slice(0, 3)
-  return { price: avg, sources }
+  const price = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const sources = priced
+    .map((r) => r.link ?? (r.asin ? `https://www.amazon.com/dp/${r.asin}` : null))
+    .filter((u): u is string => !!u)
+    .slice(0, 3)
+
+  return { price, sources }
 }
 
-async function fetchSerpPage(
-  apiKey: string,
-  query: string,
-  siteFilter?: string
-): Promise<SerpResult[]> {
-  const q = siteFilter ? `${query} site:${siteFilter}` : query
+async function fetchWalmart(item: ClaimItemInput, apiKey: string): Promise<PriceHit | null> {
   const params = new URLSearchParams({
     api_key: apiKey,
-    engine: 'google_shopping',
-    q,
-    num: '5',
+    engine: 'walmart',
+    query: serpQuery(item),
   })
   const res = await fetch(`https://serpapi.com/search?${params}`)
-  if (!res.ok) return []
+  if (!res.ok) return null
   const data = await res.json()
-  return (data.shopping_results ?? []) as SerpResult[]
+
+  type WalmartResult = { primary_price?: number; price?: number; product_page_url?: string }
+  const results: WalmartResult[] = data.organic_results ?? []
+  const priced = results.filter((r) => r.primary_price != null || r.price != null)
+  if (!priced.length) return null
+
+  const prices = priced.map((r) => r.primary_price ?? r.price ?? 0).filter((p) => p > 0)
+  if (!prices.length) return null
+
+  const price = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const sources = priced.map((r) => r.product_page_url).filter((u): u is string => !!u).slice(0, 3)
+
+  return { price, sources }
 }
 
-async function lookupSerp(item: ClaimItemInput): Promise<StepOutcome<{ price: number; sources: string[] }>> {
+async function fetchHomeDepot(item: ClaimItemInput, apiKey: string): Promise<PriceHit | null> {
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    engine: 'home_depot',
+    q: serpQuery(item),
+  })
+  const res = await fetch(`https://serpapi.com/search?${params}`)
+  if (!res.ok) return null
+  const data = await res.json()
+
+  type HomeDepotResult = { price?: number; link?: string }
+  const results: HomeDepotResult[] = data.products ?? []
+  const priced = results.filter((r) => r.price != null && r.price > 0)
+  if (!priced.length) return null
+
+  const prices = priced.map((r) => r.price!)
+  const price = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const sources = priced.map((r) => r.link).filter((u): u is string => !!u).slice(0, 3)
+
+  return { price, sources }
+}
+
+const ENGINE_FETCHERS: Record<SerpEngine, (item: ClaimItemInput, apiKey: string) => Promise<PriceHit | null>> = {
+  amazon:     fetchAmazon,
+  walmart:    fetchWalmart,
+  home_depot: fetchHomeDepot,
+}
+
+// Separate workflow step per engine so the trace shows each source individually
+async function lookupSerpEngine(engine: SerpEngine, item: ClaimItemInput): Promise<StepOutcome<PriceHit>> {
   'use step'
 
   const t0 = performance.now()
@@ -143,54 +204,21 @@ async function lookupSerp(item: ClaimItemInput): Promise<StepOutcome<{ price: nu
     return { value: null, durationMs: stepElapsed(t0), detail: 'SERP_API_KEY not configured' }
   }
 
-  const apiKey = process.env.SERP_API_KEY
-  const query = [item.name, item.brand, item.model].filter(Boolean).join(' ')
-  const sites = CATEGORY_SITES[item.category ?? 'other']
-
   try {
-    if (!sites) {
-      // 'other' — single broad Google Shopping search
-      const results = await fetchSerpPage(apiKey, query)
-      const parsed = parseSerpResults(results)
-      const durationMs = stepElapsed(t0)
-      log('serp', !!parsed, durationMs, { item: item.name, strategy: 'broad', resultCount: results.length })
-      return parsed
-        ? { value: parsed, durationMs, detail: `${parsed.sources.length} broad listings` }
-        : { value: null, durationMs, detail: 'no results (broad)' }
-    }
-
-    // Category-specific: run site-filtered search + broad Google Shopping in parallel.
-    // Use the site-filtered result if it has a price; fall back to broad; average both if both hit.
-    const [siteResults, broadResults] = await Promise.all([
-      fetchSerpPage(apiKey, query, sites[0]),
-      fetchSerpPage(apiKey, query),
-    ])
-
-    const siteParsed  = parseSerpResults(siteResults)
-    const broadParsed = parseSerpResults(broadResults)
-    const durationMs  = stepElapsed(t0)
-
-    if (siteParsed && broadParsed) {
-      // Average the two for a more defensible comp
-      const avg = Math.round((siteParsed.price + broadParsed.price) / 2)
-      const sources = [...new Set([...siteParsed.sources, ...broadParsed.sources])].slice(0, 3)
-      log('serp', true, durationMs, { item: item.name, strategy: 'averaged', site: sites[0], sitePrice: siteParsed.price, broadPrice: broadParsed.price, avg })
-      return { value: { price: avg, sources }, durationMs, detail: `${sites[0]} + broad avg` }
-    }
-
-    const winner = siteParsed ?? broadParsed
-    const strategy = siteParsed ? sites[0] : 'broad'
-    log('serp', !!winner, durationMs, { item: item.name, strategy, resultCount: (siteResults.length + broadResults.length) })
-
-    return winner
-      ? { value: winner, durationMs, detail: `${winner.sources.length} listings (${strategy})` }
-      : { value: null, durationMs, detail: `no results (${sites[0]} + broad)` }
+    const result = await ENGINE_FETCHERS[engine](item, process.env.SERP_API_KEY)
+    const durationMs = stepElapsed(t0)
+    log(engine, !!result, durationMs, { item: item.name, price: result?.price })
+    return result
+      ? { value: result, durationMs, detail: `${result.sources.length} listing${result.sources.length !== 1 ? 's' : ''}` }
+      : { value: null, durationMs, detail: `no results` }
   } catch (err) {
     const durationMs = stepElapsed(t0)
-    log('serp', false, durationMs, { error: err instanceof Error ? err.message : String(err) })
+    log(engine, false, durationMs, { item: item.name, error: err instanceof Error ? err.message : String(err) })
     return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
   }
 }
+
+// --- Cache write ---
 
 async function cachePrice(item: ClaimItemInput, price: number, sources: string[]) {
   'use step'
@@ -224,13 +252,15 @@ async function publishLiveTrace(traceKey: string | undefined, steps: PriceTraceS
   }
 }
 
+// --- Main workflow ---
+
 export async function priceItemWorkflow(item: ClaimItemInput) {
   'use workflow'
 
   const workflowTrace: PriceTraceStep[] = []
   const traceKey = item.traceKey
 
-  // eBay — free, no tokens
+  // Step 1: eBay sold listings — free direct API, good secondhand/replacement comps
   await publishLiveTrace(traceKey, [...workflowTrace, traceStep('ebay', 'running')])
   const ebayResult = await lookupEbay(item)
   workflowTrace.push(traceStep('ebay', ebayResult.value ? 'hit' : 'miss', ebayResult.durationMs, ebayResult.detail))
@@ -241,15 +271,20 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
     return { price: ebayResult.value.price, sources: ebayResult.value.sources, source: 'ebay' as const, trace: workflowTrace }
   }
 
-  // SerpAPI — Google Shopping, ~$0.001/call
-  await publishLiveTrace(traceKey, [...workflowTrace, traceStep('serp', 'running')])
-  const serpResult = await lookupSerp(item)
-  workflowTrace.push(traceStep('serp', serpResult.value ? 'hit' : 'miss', serpResult.durationMs, serpResult.detail))
-  await publishLiveTrace(traceKey, workflowTrace)
+  // Step 2: SerpAPI product engines — category-mapped waterfall, stop on first hit
+  const engines = CATEGORY_SOURCES[item.category ?? 'other'] ?? CATEGORY_SOURCES.other
 
-  if (serpResult.value) {
-    await cachePrice(item, serpResult.value.price, serpResult.value.sources)
-    return { price: serpResult.value.price, sources: serpResult.value.sources, source: 'serp' as const, trace: workflowTrace }
+  for (const engine of engines) {
+    const layer = engine as PriceLayer
+    await publishLiveTrace(traceKey, [...workflowTrace, traceStep(layer, 'running')])
+    const result = await lookupSerpEngine(engine, item)
+    workflowTrace.push(traceStep(layer, result.value ? 'hit' : 'miss', result.durationMs, result.detail))
+    await publishLiveTrace(traceKey, workflowTrace)
+
+    if (result.value) {
+      await cachePrice(item, result.value.price, result.value.sources)
+      return { price: result.value.price, sources: result.value.sources, source: engine, trace: workflowTrace }
+    }
   }
 
   return { price: null, sources: [], source: 'not_found' as const, trace: workflowTrace }

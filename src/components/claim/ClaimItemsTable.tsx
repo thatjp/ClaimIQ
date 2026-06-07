@@ -25,7 +25,6 @@ function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
     kv_cache:           { label: 'KV Cache',        className: 'text-blue-600',   icon: '⚡', title: 'Exact match from Redis cache (7-day TTL)' },
     vector_cache:       { label: 'Vector Cache',    className: 'text-purple-600', icon: '🔮', title: 'Semantic match from pgvector (90-day TTL)' },
     vector_cache_stale: { label: 'Stale Cache',     className: 'text-orange-500', icon: '⏳', title: 'Semantic match older than 90 days — may not reflect current market price' },
-    ebay:               { label: 'eBay Sold',       className: 'text-yellow-600', icon: '🛒', title: 'Average of recent sold listings via eBay Finding API' },
     serp:               { label: 'Google Shopping', className: 'text-green-600',  icon: '🔍', title: 'Retrieved via Google Shopping (SerpAPI)' },
     manual:             { label: 'Manual Entry',    className: 'text-gray-500',   icon: '✏️', title: 'Price entered manually by adjuster' },
   }
@@ -41,9 +40,8 @@ function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
 function buildSearchLinks(item: ClaimItem) {
   const q = encodeURIComponent([item.name, item.brand, item.model].filter(Boolean).join(' '))
   return [
-    { label: 'Google', url: `https://www.google.com/search?q=${q}+replacement+cost` },
-    { label: 'Amazon', url: `https://www.amazon.com/s?k=${q}` },
-    { label: 'eBay',   url: `https://www.ebay.com/sch/i.html?_nkw=${q}` },
+    { label: 'Google',  url: `https://www.google.com/search?q=${q}+replacement+cost` },
+    { label: 'Amazon',  url: `https://www.amazon.com/s?k=${q}` },
     { label: 'Walmart', url: `https://www.walmart.com/search?q=${q}` },
   ]
 }

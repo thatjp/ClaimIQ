@@ -2,7 +2,9 @@ export type PriceLayer =
   | 'kv_cache'
   | 'vector_cache'
   | 'ebay'
-  | 'serp'
+  | 'amazon'
+  | 'walmart'
+  | 'home_depot'
   | 'manual'
 
 export type PriceTraceStepStatus = 'hit' | 'miss' | 'error' | 'running' | 'pending' | 'skipped'
@@ -19,7 +21,9 @@ export const PRICE_LADDER: { layer: PriceLayer; label: string }[] = [
   { layer: 'kv_cache',     label: 'Exact cache' },
   { layer: 'vector_cache', label: 'Similar items' },
   { layer: 'ebay',         label: 'eBay sold' },
-  { layer: 'serp',         label: 'Google Shopping' },
+  { layer: 'amazon',       label: 'Amazon' },
+  { layer: 'walmart',      label: 'Walmart' },
+  { layer: 'home_depot',   label: 'Home Depot' },
 ]
 
 export function traceStep(

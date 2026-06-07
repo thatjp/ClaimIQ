@@ -1,24 +1,7 @@
 import type { EvalStatus, PricingParseFixture, PricingParseResult } from '@/lib/evals/types'
 
 // Mirror the parsing logic from price.ts so the eval tests the real behaviour.
-// These functions must stay in sync with lookupEbay / lookupSerp in src/workflows/price.ts.
-
-function parseEbayResponse(data: unknown): { price: number; sources: string[] } | null {
-  type EbayItem = { sellingStatus: [{ currentPrice: [{ __value__: string }] }]; viewItemURL: [string] }
-  type EbayData = { findCompletedItemsResponse?: [{ searchResult?: [{ item?: unknown[] }] }] }
-  const listings: unknown[] = (data as EbayData)
-    ?.findCompletedItemsResponse?.[0]
-    ?.searchResult?.[0]
-    ?.item ?? []
-
-  if (!listings.length) return null
-
-  const typed = listings as EbayItem[]
-  const prices = typed.map((i) => parseFloat(i.sellingStatus[0].currentPrice[0].__value__))
-  const avg = prices.reduce((a, b) => a + b, 0) / prices.length
-  const sources = typed.map((i) => i.viewItemURL[0])
-  return { price: Math.round(avg), sources }
-}
+// Must stay in sync with parseSerpResults in src/workflows/price.ts.
 
 function parseSerpResponse(data: unknown): { price: number; sources: string[] } | null {
   const results: { price?: string; extracted_price?: number; link?: string; product_link?: string }[] =
@@ -46,9 +29,7 @@ export function scorePricingParse(fixture: PricingParseFixture, durationMs: numb
   let sourceCount: number | null = null
 
   try {
-    const result = fixture.source === 'ebay'
-      ? parseEbayResponse(fixture.input)
-      : parseSerpResponse(fixture.input)
+    const result = parseSerpResponse(fixture.input)
 
     const hit = result !== null
     price = result?.price ?? null
@@ -62,7 +43,6 @@ export function scorePricingParse(fixture: PricingParseFixture, durationMs: numb
       if (price === null) {
         failures.push('Expected a price but got null')
       } else {
-        // Allow ±1 for rounding differences
         const delta = Math.abs(price - fixture.expected.price)
         if (delta > 1) {
           failures.push(`Expected price ~${fixture.expected.price}, got ${price} (delta ${delta})`)

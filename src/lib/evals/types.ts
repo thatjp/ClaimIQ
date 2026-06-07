@@ -30,11 +30,11 @@ export interface ExtractionEvalResult {
   durationMs: number
 }
 
-// ── Pricing parse (no LLM — tests eBay + SerpAPI response parsing) ────────────
+// ── Pricing parse (no LLM — tests SerpAPI response parsing) ──────────────────
 
 export interface PricingParseFixture {
   id: string
-  source: 'ebay' | 'serp'
+  source: 'amazon' | 'walmart' | 'home_depot' | 'ebay'
   description: string
   input: unknown
   expected: {
@@ -48,7 +48,7 @@ export interface PricingParseFixture {
 
 export interface PricingParseResult {
   id: string
-  source: 'ebay' | 'serp'
+  source: 'amazon' | 'walmart' | 'home_depot' | 'ebay'
   status: EvalStatus
   price: number | null
   sourceCount: number | null

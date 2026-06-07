@@ -8,6 +8,7 @@ import {
   type IntakeProgressItem,
 } from '@/lib/pricing/intake-progress'
 import { priceItemWorkflow } from '@/workflows/price'
+import { traceStep, PRICE_LADDER, type PriceTraceStep } from '@/lib/pricing/trace'
 
 export interface IntakeInput {
   intakeKey: string
@@ -99,18 +100,31 @@ async function publishIntakeProgressStep(intakeKey: string, progress: IntakeProg
   }
 }
 
-// Inline the sync cache ladder so the workflow doesn't need to hit the /api/price
-// HTTP endpoint. Falls back to priceItemWorkflow for cache misses.
-async function lookupPriceFromCache(item: PersistedItem): Promise<{ price: number; sources: string[]; source: string } | null> {
+interface CacheOutcome {
+  price: number
+  sources: string[]
+  source: string
+  trace: PriceTraceStep[]
+}
+
+// Inline cache ladder (KV → pgvector). Returns trace steps so the dashboard
+// can show which layer resolved the price, matching the live trace on the claim workspace.
+async function lookupPriceFromCache(item: PersistedItem): Promise<CacheOutcome | null> {
   'use step'
+
+  const trace: PriceTraceStep[] = []
 
   // Layer 1: KV exact cache
   try {
     const cacheKey = `price:${item.name}:${item.brand || ''}:${item.condition}`
     const cached = await kv.get<{ price: number; sources: string[] }>(cacheKey)
-    if (cached) return { price: cached.price, sources: cached.sources, source: 'kv_cache' }
+    if (cached) {
+      trace.push(traceStep('kv_cache', 'hit'))
+      return { price: cached.price, sources: cached.sources, source: 'kv_cache', trace }
+    }
+    trace.push(traceStep('kv_cache', 'miss'))
   } catch {
-    // KV unavailable — fall through
+    trace.push(traceStep('kv_cache', 'miss'))
   }
 
   // Layer 2: pgvector similarity
@@ -124,14 +138,17 @@ async function lookupPriceFromCache(item: PersistedItem): Promise<{ price: numbe
     `
     const distance = rows[0]?.distance as number | undefined
     if (rows.length > 0 && distance != null && distance < 0.15) {
+      trace.push(traceStep('vector_cache', 'hit'))
       return {
         price: parseFloat(rows[0].price as string),
         sources: (rows[0].sources as string[]) ?? [],
         source: 'vector_cache',
+        trace,
       }
     }
+    trace.push(traceStep('vector_cache', 'miss'))
   } catch {
-    // pgvector unavailable — fall through
+    trace.push(traceStep('vector_cache', 'miss'))
   }
 
   return null
@@ -184,14 +201,38 @@ export async function claimIntakeWorkflow(input: IntakeInput): Promise<void> {
       batch.map(async (item) => {
         const idx = persistedItems.indexOf(item)
 
-        progressItems[idx] = { ...progressItems[idx], priceStatus: 'pricing' }
+        // Derive from PRICE_LADDER so this never drifts when layers change
+        const pendingTrace = PRICE_LADDER.map(({ layer }, i) =>
+          traceStep(layer, i === 0 ? 'running' : 'pending')
+        )
+        progressItems[idx] = { ...progressItems[idx], priceStatus: 'pricing', trace: pendingTrace }
         await publishIntakeProgressStep(intakeKey, { phase: 'pricing', items: [...progressItems] })
 
         try {
-          // Try cache first (step), then fall back to full workflow (direct await composition)
-          let outcome = await lookupPriceFromCache(item)
+          // Layer 1 & 2: KV + vector cache
+          const cacheOutcome = await lookupPriceFromCache(item)
 
-          if (!outcome) {
+          if (cacheOutcome) {
+            await updateItemPriceStep(claimId, item.id, cacheOutcome.price, cacheOutcome.sources, cacheOutcome.source)
+            progressItems[idx] = {
+              id: item.id,
+              name: item.name,
+              priceStatus: 'found',
+              price: cacheOutcome.price,
+              source: cacheOutcome.source,
+              trace: cacheOutcome.trace,
+            }
+          } else {
+            // Cache missed — show miss steps + first external source as running
+            const afterCacheMissTrace = PRICE_LADDER.map(({ layer }, i) => {
+              if (i === 0) return traceStep(layer, 'miss')  // kv_cache
+              if (i === 1) return traceStep(layer, 'miss')  // vector_cache
+              if (i === 2) return traceStep(layer, 'running') // first external source
+              return traceStep(layer, 'pending')
+            })
+            progressItems[idx] = { ...progressItems[idx], trace: afterCacheMissTrace }
+            await publishIntakeProgressStep(intakeKey, { phase: 'pricing', items: [...progressItems] })
+
             const workflowResult = await priceItemWorkflow({
               name: item.name,
               brand: item.brand ?? undefined,
@@ -200,26 +241,24 @@ export async function claimIntakeWorkflow(input: IntakeInput): Promise<void> {
               condition: item.condition,
               quantity: item.quantity,
             })
+            const fullTrace = [
+              traceStep('kv_cache', 'miss'),
+              traceStep('vector_cache', 'miss'),
+              ...workflowResult.trace,
+            ]
             if (workflowResult.price != null) {
-              outcome = {
+              await updateItemPriceStep(claimId, item.id, workflowResult.price, workflowResult.sources, workflowResult.source)
+              progressItems[idx] = {
+                id: item.id,
+                name: item.name,
+                priceStatus: 'found',
                 price: workflowResult.price,
-                sources: workflowResult.sources,
                 source: workflowResult.source,
+                trace: fullTrace,
               }
+            } else {
+              progressItems[idx] = { id: item.id, name: item.name, priceStatus: 'error', trace: fullTrace }
             }
-          }
-
-          if (outcome) {
-            await updateItemPriceStep(claimId, item.id, outcome.price, outcome.sources, outcome.source)
-            progressItems[idx] = {
-              id: item.id,
-              name: item.name,
-              priceStatus: 'found',
-              price: outcome.price,
-              source: outcome.source,
-            }
-          } else {
-            progressItems[idx] = { id: item.id, name: item.name, priceStatus: 'error' }
           }
         } catch {
           progressItems[idx] = { id: item.id, name: item.name, priceStatus: 'error' }

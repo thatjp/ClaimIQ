@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DeleteClaimButton } from '@/components/DeleteClaimButton'
+import { PriceLookupTrace } from '@/components/claim/PriceLookupTrace'
 import type { IntakeProgress, IntakeProgressItem } from '@/lib/pricing/intake-progress'
 
 interface Claim {
@@ -22,25 +23,30 @@ const MAX_POLLS = 150
 
 function PricingStatusRow({ item }: { item: IntakeProgressItem }) {
   return (
-    <div className="flex items-center justify-between py-1.5 text-xs border-b border-gray-50 last:border-0">
-      <span className="text-gray-700 font-medium truncate mr-3">{item.name}</span>
-      <div className="flex items-center gap-2 shrink-0">
-        {item.priceStatus === 'queued' && (
-          <span className="text-gray-400">Queued</span>
-        )}
-        {item.priceStatus === 'pricing' && (
-          <span className="flex items-center gap-1 text-yellow-600">
-            <span className="inline-block w-2.5 h-2.5 border border-yellow-500 border-t-transparent rounded-full animate-spin" />
-            Pricing…
-          </span>
-        )}
-        {item.priceStatus === 'found' && item.price != null && (
-          <span className="text-green-700 font-semibold">${item.price.toLocaleString()}</span>
-        )}
-        {item.priceStatus === 'error' && (
-          <span className="text-red-500">Not found</span>
-        )}
+    <div className="py-2 border-b border-gray-50 last:border-0">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-gray-700 font-medium truncate mr-3">{item.name}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {item.priceStatus === 'queued' && (
+            <span className="text-gray-400">Queued</span>
+          )}
+          {item.priceStatus === 'pricing' && (
+            <span className="flex items-center gap-1 text-yellow-600">
+              <span className="inline-block w-2.5 h-2.5 border border-yellow-500 border-t-transparent rounded-full animate-spin" />
+              Pricing…
+            </span>
+          )}
+          {item.priceStatus === 'found' && item.price != null && (
+            <span className="text-green-700 font-semibold">${item.price.toLocaleString()}</span>
+          )}
+          {item.priceStatus === 'error' && (
+            <span className="text-red-500">Not found</span>
+          )}
+        </div>
       </div>
+      {item.trace && item.trace.length > 0 && (
+        <PriceLookupTrace trace={item.trace} compact />
+      )}
     </div>
   )
 }

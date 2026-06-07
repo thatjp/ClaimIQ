@@ -11,7 +11,7 @@ export interface ClaimItem {
   quantity: number
   adjuster_notes?: string
   price?: number
-  price_source?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'walmart' | 'bestbuy' | 'manual'
+  price_source?: 'kv_cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'walmart' | 'home_depot' | 'manual'
   price_sources?: string[]
   price_cached_at?: string
   approved?: boolean
@@ -93,7 +93,7 @@ export function normalizeClaimItem(row: ClaimItem): ClaimItem {
 export interface UpdateClaimItemInput {
   price_sources?: string[]
   price?: number | null
-  price_source?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'walmart' | 'bestbuy' | 'manual'
+  price_source?: 'kv_cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'walmart' | 'home_depot' | 'manual'
   approved?: boolean
 }
 

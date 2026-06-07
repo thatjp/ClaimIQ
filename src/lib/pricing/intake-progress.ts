@@ -1,4 +1,5 @@
 import { kv } from '@/lib/kv'
+import type { PriceTraceStep } from '@/lib/pricing/trace'
 
 const INTAKE_TTL = 60 * 60 * 24 // 24 hours
 
@@ -11,6 +12,7 @@ export interface IntakeProgressItem {
   priceStatus: ItemPriceStatus
   price?: number
   source?: string
+  trace?: PriceTraceStep[]
 }
 
 export interface IntakeProgress {
