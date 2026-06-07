@@ -44,10 +44,10 @@ export function ClaimHeader({ claim, claimId, onGenerate, generating }: Props) {
           </span>
         </div>
         {items.length > 0 && (
-          <p className={`text-xs mt-2 ${canGenerate ? 'text-green-700' : 'text-amber-700'}`}>
-            {canGenerate
-              ? `All ${items.length} items approved and grounded — ready to generate document`
-              : `${readiness.approvedCount} of ${items.length} items approved — each line needs price, age, source URL, and approval`}
+          <p className={`text-xs mt-2 ${readiness.approvedCount > 0 ? 'text-green-700' : 'text-amber-700'}`}>
+            {readiness.approvedCount > 0
+              ? `${readiness.approvedCount} of ${items.length} items approved — document will include approved items only`
+              : `${items.length} items — check the box next to each priced item to approve it`}
           </p>
         )}
       </div>
@@ -64,17 +64,17 @@ export function ClaimHeader({ claim, claimId, onGenerate, generating }: Props) {
         >
           + Add Items
         </Link>
-        {canGenerate ? (
+        {readiness.approvedCount > 0 ? (
           <button
             onClick={onGenerate}
             disabled={generating}
             className="bg-gray-800 text-white px-3 py-1.5 rounded-md text-xs md:text-sm font-medium hover:bg-gray-900 disabled:opacity-60 transition-colors"
           >
-            {generating ? 'Generating…' : 'Generate Document'}
+            {generating ? 'Generating…' : `Generate Document (${readiness.approvedCount})`}
           </button>
         ) : (
           <span
-            title="Approve every line item with price, age, and source URL first"
+            title="Check at least one priced item to approve it"
             className="bg-gray-300 text-gray-500 px-3 py-1.5 rounded-md text-xs md:text-sm font-medium cursor-not-allowed"
           >
             Generate Document

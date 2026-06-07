@@ -124,7 +124,7 @@ export default function ClaimWorkspacePage() {
   const [loading, setLoading] = useState(true)
   const [showDocument, setShowDocument] = useState(false)
 
-  const { pricingState, notFoundIds, refreshPrice } = useClaimPricing(
+  const { pricingState, refreshPrice } = useClaimPricing(
     (updater) => setClaim((prev) => (prev ? { ...prev, items: updater(prev.items) } : prev))
   )
 
@@ -155,9 +155,16 @@ export default function ClaimWorkspacePage() {
     )
   }
 
+  async function handleApprovalChange(itemId: string, approved: boolean) {
+    const { item: updated } = await patchClaimItem(claimId, itemId, { approved })
+    setClaim((prev) =>
+      prev ? { ...prev, items: prev.items.map((i) => (i.id === updated.id ? updated : i)) } : prev
+    )
+  }
+
   function handleGenerate() {
     const readiness = getClaimReadiness(claim?.items ?? [])
-    if (readiness.canGenerateDocument) setShowDocument(true)
+    if (readiness.approvedCount > 0) setShowDocument(true)
   }
 
   if (loading) {
@@ -189,9 +196,9 @@ export default function ClaimWorkspacePage() {
         <ClaimItemsTable
           items={claim.items}
           pricingState={pricingState}
-          notFoundIds={notFoundIds}
           onRefreshPrice={(item: ClaimItem) => refreshPrice(item)}
           onManualPrice={handleManualPrice}
+          onApprovalChange={handleApprovalChange}
         />
         {showDocument && (
           <DocumentPanel
