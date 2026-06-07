@@ -14,7 +14,7 @@ import type {
   RunEvalsOptions,
 } from '@/lib/evals/types'
 
-const DELAY_MS = 100
+const DELAY_MS = 3000
 const PASS_THRESHOLD = 0.75
 const RESULTS_DIR = resolve(process.cwd(), 'evals/results')
 

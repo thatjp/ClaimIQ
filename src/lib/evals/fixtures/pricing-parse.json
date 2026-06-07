@@ -1,13 +1,13 @@
 [
   {
-    "id": "serp-shopping-hit",
-    "source": "serp",
-    "description": "Three Google Shopping results with extracted_price — should average",
+    "id": "amazon-hit",
+    "source": "amazon",
+    "description": "Three Amazon organic results with extracted_price — should average",
     "input": {
-      "shopping_results": [
-        { "extracted_price": 899.99, "product_link": "https://www.amazon.com/dp/ABC123" },
-        { "extracted_price": 849.00, "product_link": "https://www.bestbuy.com/site/product/123" },
-        { "extracted_price": 920.00, "product_link": "https://www.walmart.com/ip/456" }
+      "organic_results": [
+        { "extracted_price": 899.99, "link": "https://www.amazon.com/dp/ABC123" },
+        { "extracted_price": 849.00, "asin": "DEF456" },
+        { "extracted_price": 920.00, "link": "https://www.amazon.com/dp/GHI789" }
       ]
     },
     "expected": {
@@ -18,60 +18,94 @@
     }
   },
   {
-    "id": "serp-price-string-fallback",
-    "source": "serp",
-    "description": "Results with price string instead of extracted_price — should parse correctly",
+    "id": "amazon-price-string-fallback",
+    "source": "amazon",
+    "description": "Amazon results with price string instead of extracted_price — should parse correctly",
     "input": {
-      "shopping_results": [
+      "organic_results": [
         { "price": "$1,299.00", "link": "https://www.amazon.com/dp/XYZ" },
-        { "price": "$1,199.99", "link": "https://www.walmart.com/ip/789" }
+        { "price": "$1,199.99", "link": "https://www.amazon.com/dp/ABC" }
       ]
     },
     "expected": {
       "hit": true,
       "price": 1250,
       "sourceCount": 2,
-      "notes": "Average of 1299+1199.99 = 1249.50, rounded to 1250; uses link fallback when product_link absent"
+      "notes": "Average of 1299+1199.99 = 1249.50, rounded to 1250"
     }
   },
   {
-    "id": "serp-no-results",
-    "source": "serp",
-    "description": "Empty shopping_results array — should return null",
+    "id": "walmart-hit",
+    "source": "walmart",
+    "description": "Walmart organic results with primary_price — should average",
     "input": {
-      "shopping_results": []
+      "organic_results": [
+        { "primary_price": 499.00, "product_page_url": "https://www.walmart.com/ip/product-a/123" },
+        { "primary_price": 479.00, "product_page_url": "https://www.walmart.com/ip/product-b/456" }
+      ]
+    },
+    "expected": {
+      "hit": true,
+      "price": 489,
+      "sourceCount": 2,
+      "notes": "Average of 499+479 = 489"
+    }
+  },
+  {
+    "id": "home-depot-hit",
+    "source": "home_depot",
+    "description": "Home Depot products with price — should average",
+    "input": {
+      "products": [
+        { "price": 249.00, "link": "https://www.homedepot.com/p/product-a/123" },
+        { "price": 279.00, "link": "https://www.homedepot.com/p/product-b/456" }
+      ]
+    },
+    "expected": {
+      "hit": true,
+      "price": 264,
+      "sourceCount": 2,
+      "notes": "Average of 249+279 = 264"
+    }
+  },
+  {
+    "id": "amazon-no-results",
+    "source": "amazon",
+    "description": "Empty organic_results array — should return null",
+    "input": {
+      "organic_results": []
     },
     "expected": {
       "hit": false,
       "price": null,
-      "notes": "No shopping results"
+      "notes": "No results"
     }
   },
   {
-    "id": "serp-missing-key",
-    "source": "serp",
-    "description": "Response with no shopping_results key — should return null gracefully",
+    "id": "amazon-missing-key",
+    "source": "amazon",
+    "description": "Response with no organic_results key — should return null gracefully",
     "input": {},
     "expected": {
       "hit": false,
       "price": null,
-      "notes": "Missing shopping_results key — parser should not throw"
+      "notes": "Missing organic_results key — parser should not throw"
     }
   },
   {
-    "id": "serp-no-prices",
-    "source": "serp",
+    "id": "amazon-no-prices",
+    "source": "amazon",
     "description": "Results present but none have a parseable price — should return null",
     "input": {
-      "shopping_results": [
-        { "title": "Some product", "link": "https://example.com/product" },
-        { "title": "Another product", "product_link": "https://example.com/other" }
+      "organic_results": [
+        { "title": "Some product", "link": "https://www.amazon.com/dp/ABC" },
+        { "title": "Another product", "asin": "XYZ789" }
       ]
     },
     "expected": {
       "hit": false,
       "price": null,
-      "notes": "Results exist but no price fields — should not throw or return a price"
+      "notes": "Results present but no price fields — should return null"
     }
   }
 ]

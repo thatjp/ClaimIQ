@@ -13,6 +13,7 @@ export interface IntakeProgressItem {
   price?: number
   source?: string
   trace?: PriceTraceStep[]
+  flagReason?: string | null
 }
 
 export interface IntakeProgress {

@@ -9,6 +9,7 @@ import type { IntakeProgress, IntakeProgressItem } from '@/lib/pricing/intake-pr
 
 interface Claim {
   id: string
+  title: string | null
   state: string
   policy_type: string
   date_of_loss: string
@@ -25,7 +26,12 @@ function PricingStatusRow({ item }: { item: IntakeProgressItem }) {
   return (
     <div className="py-2 border-b border-gray-50 last:border-0">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-gray-700 font-medium truncate mr-3">{item.name}</span>
+        <div className="flex items-center gap-1.5 truncate mr-3">
+          {item.flagReason && (
+            <span className="text-amber-500 shrink-0" title={item.flagReason}>⚠</span>
+          )}
+          <span className="text-gray-700 font-medium truncate">{item.name}</span>
+        </div>
         <div className="flex items-center gap-2 shrink-0">
           {item.priceStatus === 'queued' && (
             <span className="text-gray-400">Queued</span>
@@ -44,6 +50,9 @@ function PricingStatusRow({ item }: { item: IntakeProgressItem }) {
           )}
         </div>
       </div>
+      {item.flagReason && (
+        <p className="text-xs text-amber-600 mt-0.5 ml-4">{item.flagReason}</p>
+      )}
       {item.trace && item.trace.length > 0 && (
         <PriceLookupTrace trace={item.trace} compact />
       )}
@@ -116,7 +125,9 @@ function ClaimCard({
       <div className="px-4 py-3 flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-xs text-gray-500">{claim.id.slice(0, 8)}…</span>
+            <span className="font-medium text-gray-900 truncate">
+              {claim.title ?? <span className="font-mono text-gray-400">{claim.id.slice(0, 8)}…</span>}
+            </span>
             <StatusBadge status={claim.status} />
             {showBadge && (
               <span className="inline-flex items-center gap-1 text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full">

@@ -1,26 +1,62 @@
 import type { EvalStatus, PricingParseFixture, PricingParseResult } from '@/lib/evals/types'
 
-// Mirror the parsing logic from price.ts so the eval tests the real behaviour.
-// Must stay in sync with parseSerpResults in src/workflows/price.ts.
+// Mirrors the parsing logic in src/workflows/price.ts — must stay in sync.
 
-function parseSerpResponse(data: unknown): { price: number; sources: string[] } | null {
-  const results: { price?: string; extracted_price?: number; link?: string; product_link?: string }[] =
-    (data as Record<string, unknown>)?.shopping_results as typeof results ?? []
+type PriceHit = { price: number; sources: string[] }
 
-  if (!results.length) return null
-
+function parseAmazon(data: unknown): PriceHit | null {
+  type R = { extracted_price?: number; price?: string; link?: string; asin?: string }
+  const results: R[] = (data as Record<string, unknown>)?.organic_results as R[] ?? []
   const priced = results.filter((r) => r.extracted_price != null || r.price)
   if (!priced.length) return null
 
   const prices = priced
-    .map((r) => r.extracted_price ?? parseFloat(r.price!.replace(/[^0-9.]/g, '')))
+    .map((r) => r.extracted_price ?? parseFloat((r.price ?? '').replace(/[^0-9.]/g, '')))
     .filter((p) => !isNaN(p) && p > 0)
-
   if (!prices.length) return null
 
-  const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
-  const sources = priced.map((r) => r.product_link ?? r.link).filter((u): u is string => !!u).slice(0, 3)
-  return { price: avg, sources }
+  const price = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const sources = priced
+    .map((r) => r.link ?? (r.asin ? `https://www.amazon.com/dp/${r.asin}` : null))
+    .filter((u): u is string => !!u)
+    .slice(0, 3)
+
+  return { price, sources }
+}
+
+function parseWalmart(data: unknown): PriceHit | null {
+  type R = { primary_price?: number; price?: number; product_page_url?: string }
+  const results: R[] = (data as Record<string, unknown>)?.organic_results as R[] ?? []
+  const priced = results.filter((r) => r.primary_price != null || r.price != null)
+  if (!priced.length) return null
+
+  const prices = priced.map((r) => r.primary_price ?? r.price ?? 0).filter((p) => p > 0)
+  if (!prices.length) return null
+
+  const price = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const sources = priced.map((r) => r.product_page_url).filter((u): u is string => !!u).slice(0, 3)
+
+  return { price, sources }
+}
+
+function parseHomeDepot(data: unknown): PriceHit | null {
+  type R = { price?: number; link?: string }
+  const results: R[] = (data as Record<string, unknown>)?.products as R[] ?? []
+  const priced = results.filter((r) => r.price != null && r.price > 0)
+  if (!priced.length) return null
+
+  const prices = priced.map((r) => r.price!)
+  const price = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const sources = priced.map((r) => r.link).filter((u): u is string => !!u).slice(0, 3)
+
+  return { price, sources }
+}
+
+const PARSERS: Record<string, (data: unknown) => PriceHit | null> = {
+  amazon:     parseAmazon,
+  walmart:    parseWalmart,
+  home_depot: parseHomeDepot,
+  ebay:       () => null, // eBay uses the direct Finding API, not parsed in evals
 }
 
 export function scorePricingParse(fixture: PricingParseFixture, durationMs: number): PricingParseResult {
@@ -29,30 +65,34 @@ export function scorePricingParse(fixture: PricingParseFixture, durationMs: numb
   let sourceCount: number | null = null
 
   try {
-    const result = parseSerpResponse(fixture.input)
+    const parser = PARSERS[fixture.source]
+    if (!parser) {
+      failures.push(`No parser registered for source "${fixture.source}"`)
+    } else {
+      const result = parser(fixture.input)
+      const hit = result !== null
+      price = result?.price ?? null
+      sourceCount = result?.sources.length ?? null
 
-    const hit = result !== null
-    price = result?.price ?? null
-    sourceCount = result?.sources.length ?? null
+      if (hit !== fixture.expected.hit) {
+        failures.push(`Expected hit=${fixture.expected.hit} but got hit=${hit}`)
+      }
 
-    if (hit !== fixture.expected.hit) {
-      failures.push(`Expected hit=${fixture.expected.hit} but got hit=${hit}`)
-    }
-
-    if (fixture.expected.hit && fixture.expected.price != null) {
-      if (price === null) {
-        failures.push('Expected a price but got null')
-      } else {
-        const delta = Math.abs(price - fixture.expected.price)
-        if (delta > 1) {
-          failures.push(`Expected price ~${fixture.expected.price}, got ${price} (delta ${delta})`)
+      if (fixture.expected.hit && fixture.expected.price != null) {
+        if (price === null) {
+          failures.push('Expected a price but got null')
+        } else {
+          const delta = Math.abs(price - fixture.expected.price)
+          if (delta > 1) {
+            failures.push(`Expected price ~${fixture.expected.price}, got ${price} (delta ${delta})`)
+          }
         }
       }
-    }
 
-    if (fixture.expected.hit && fixture.expected.sourceCount != null) {
-      if (sourceCount !== fixture.expected.sourceCount) {
-        failures.push(`Expected ${fixture.expected.sourceCount} sources, got ${sourceCount ?? 0}`)
+      if (fixture.expected.hit && fixture.expected.sourceCount != null) {
+        if (sourceCount !== fixture.expected.sourceCount) {
+          failures.push(`Expected ${fixture.expected.sourceCount} sources, got ${sourceCount ?? 0}`)
+        }
       }
     }
   } catch (err) {

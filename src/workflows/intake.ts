@@ -24,7 +24,7 @@ interface RawItem {
   category: string
   condition: string
   quantity: number
-  adjusterNotes?: string | null
+  flagReason?: string | null
 }
 
 interface PersistedItem {
@@ -35,6 +35,8 @@ interface PersistedItem {
   category: string
   condition: string
   quantity: number
+  flagged: boolean
+  flag_reason?: string | null
 }
 
 const BATCH_SIZE = 5
@@ -52,7 +54,7 @@ async function persistItemsStep(claimId: string, items: RawItem[]): Promise<Pers
       db`
         INSERT INTO claim_items (
           claim_id, name, brand, model, category, condition,
-          quantity, adjuster_notes, flagged
+          quantity, flagged, flag_reason
         )
         VALUES (
           ${claimId},
@@ -62,10 +64,10 @@ async function persistItemsStep(claimId: string, items: RawItem[]): Promise<Pers
           ${item.category},
           ${item.condition},
           ${item.quantity ?? 1},
-          ${item.adjusterNotes ?? null},
-          false
+          ${!!item.flagReason},
+          ${item.flagReason ?? null}
         )
-        RETURNING id, name, brand, model, category, condition, quantity
+        RETURNING id, name, brand, model, category, condition, quantity, flagged, flag_reason
       `
     )
   )
@@ -190,6 +192,7 @@ export async function claimIntakeWorkflow(input: IntakeInput): Promise<void> {
     id: item.id,
     name: item.name,
     priceStatus: 'queued',
+    flagReason: item.flag_reason ?? null,
   }))
   await publishIntakeProgressStep(intakeKey, { phase: 'pricing', items: [...progressItems] })
 

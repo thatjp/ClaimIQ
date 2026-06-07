@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS claims (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id TEXT NOT NULL,
+  title TEXT,
   state TEXT NOT NULL,
   policy_type TEXT NOT NULL,
   date_of_loss DATE NOT NULL,
@@ -20,6 +21,9 @@ CREATE TABLE IF NOT EXISTS claims (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Add title to existing deployments
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS title TEXT;
 
 CREATE INDEX IF NOT EXISTS claims_user_id_idx ON claims(user_id);
 CREATE INDEX IF NOT EXISTS claims_status_idx ON claims(status);

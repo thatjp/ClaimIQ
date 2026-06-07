@@ -11,6 +11,7 @@ function NewClaimForm() {
   const existingClaimId = searchParams.get('claimId')
   const isAdding = !!existingClaimId
 
+  const [title, setTitle] = useState('')
   const [state, setState] = useState('CA')
   const [policyType, setPolicyType] = useState('HO-3')
   const [dateOfLoss, setDateOfLoss] = useState(new Date().toISOString().split('T')[0])
@@ -78,7 +79,7 @@ function NewClaimForm() {
         const claimRes = await fetch('/api/claims', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state, policyType, dateOfLoss }),
+          body: JSON.stringify({ title: title.trim() || null, state, policyType, dateOfLoss }),
         })
         if (!claimRes.ok) throw new Error('Failed to create claim')
         const claim = await claimRes.json() as { id: string }
@@ -123,6 +124,17 @@ function NewClaimForm() {
         {!isAdding && (
           <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Claim Details</h2>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Claim Title</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Smith Residence Kitchen Fire"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
