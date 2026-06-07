@@ -1,11 +1,89 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { US_STATES } from '@/lib/constants'
-import { BLANK_ITEM, ExtractedItem } from '@/types/items'
-import { useItemExtraction } from '@/lib/hooks/useItemExtraction'
-import { ItemReviewTable } from '@/components/ItemReviewTable'
+import { useIntakeWorkflow } from '@/lib/hooks/useIntakeWorkflow'
+import type { IntakeProgressItem } from '@/lib/hooks/useIntakeWorkflow'
+
+function PriceStatusCell({ item }: { item: IntakeProgressItem }) {
+  if (item.priceStatus === 'queued')  return <span className="text-gray-400 text-xs">Queued</span>
+  if (item.priceStatus === 'pricing') return (
+    <span className="flex items-center gap-1.5 text-yellow-600 text-xs">
+      <span className="inline-block w-3 h-3 border border-yellow-500 border-t-transparent rounded-full animate-spin" />
+      Pricing...
+    </span>
+  )
+  if (item.priceStatus === 'found')   return <span className="text-green-600 text-xs">Found</span>
+  return <span className="text-red-500 text-xs">Not found</span>
+}
+
+function ProcessingView({
+  claimId,
+  progress,
+  onNavigate,
+}: {
+  claimId: string
+  progress: { phase: string; items: IntakeProgressItem[]; error?: string } | null
+  onNavigate: () => void
+}) {
+  const phase = progress?.phase ?? 'extracting'
+  const items = progress?.items ?? []
+  const found = items.filter((i) => i.priceStatus === 'found').length
+
+  return (
+    <div className="p-4 md:p-8 max-w-2xl">
+      <h1 className="text-2xl font-semibold text-gray-900 mb-1">Processing Claim</h1>
+      <p className="text-sm text-gray-500 mb-6">
+        You can close this tab — the claim will finish processing in the background.
+      </p>
+
+      <div className="flex items-center gap-3 mb-6">
+        <div className="animate-spin w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full shrink-0" />
+        <span className="text-sm font-medium text-gray-700">
+          {phase === 'extracting' && 'Extracting items from description...'}
+          {phase === 'pricing'    && `Pricing items — ${found} of ${items.length} done`}
+          {phase === 'done'       && 'All done — redirecting...'}
+        </span>
+      </div>
+
+      {phase === 'pricing' && items.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Item</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Price</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td className="px-4 py-2.5 font-medium text-gray-900">{item.name}</td>
+                  <td className="px-4 py-2.5"><PriceStatusCell item={item} /></td>
+                  <td className="px-4 py-2.5 text-right">
+                    {item.price != null
+                      ? <span className="font-medium text-green-700">${item.price.toLocaleString()}</span>
+                      : <span className="text-gray-300">—</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <button
+        onClick={onNavigate}
+        className="text-sm text-blue-600 hover:underline"
+      >
+        Go to claim workspace →
+      </button>
+    </div>
+  )
+}
 
 function NewClaimForm() {
   const router = useRouter()
@@ -17,24 +95,63 @@ function NewClaimForm() {
   const [policyType, setPolicyType] = useState('HO-3')
   const [dateOfLoss, setDateOfLoss] = useState(new Date().toISOString().split('T')[0])
   const [claimId, setClaimId] = useState<string | null>(existingClaimId)
-  const [addingItem, setAddingItem] = useState(false)
-  const [newItem, setNewItem] = useState<ExtractedItem>(BLANK_ITEM)
+  const [description, setDescription] = useState('')
+  const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
 
-  const {
-    step, setStep, setExtractedItems, extractedItems,
-    pricingTraces, replayIndices,
-    description, setDescription, error,
-    recording, transcribing,
-    handleImageChange, startRecording, stopRecording,
-    extract, priceAll, removeItem, saveUnpricedItemsToClaim,
-    isPricingInProgress,
-  } = useItemExtraction(claimId ?? undefined)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+
+  const { state: intakeState, trigger } = useIntakeWorkflow()
+
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string
+      setImageBase64(result.split(',')[1])
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function startRecording() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+    audioChunksRef.current = []
+    mediaRecorder.ondataavailable = (e) => audioChunksRef.current.push(e.data)
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop())
+      setTranscribing(true)
+      try {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const formData = new FormData()
+        formData.append('audio', blob, 'recording.webm')
+        const res = await fetch('/api/transcribe', { method: 'POST', body: formData })
+        if (res.ok) {
+          const { text } = await res.json() as { text: string }
+          setDescription((prev) => prev ? `${prev} ${text}` : text)
+        }
+      } finally {
+        setTranscribing(false)
+      }
+    }
+    mediaRecorderRef.current = mediaRecorder
+    mediaRecorder.start()
+    setRecording(true)
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop()
+    setRecording(false)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitError('')
-    setStep('extracting')
+
     try {
       let resolvedClaimId = claimId
       if (!isAdding) {
@@ -44,106 +161,54 @@ function NewClaimForm() {
           body: JSON.stringify({ state, policyType, dateOfLoss }),
         })
         if (!claimRes.ok) throw new Error('Failed to create claim')
-        const claim = await claimRes.json()
+        const claim = await claimRes.json() as { id: string }
         resolvedClaimId = claim.id
         setClaimId(claim.id)
       }
-      void resolvedClaimId
-      await extract()
+
+      await trigger(
+        resolvedClaimId!,
+        description,
+        imageBase64,
+        () => router.push(`/app/claims/${resolvedClaimId}`)
+      )
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'An error occurred')
-      setStep('form')
     }
   }
 
-  async function handleContinue() {
-    const targetId = claimId ?? existingClaimId
-    if (!targetId) return
-    try {
-      await saveUnpricedItemsToClaim()
-    } catch {
-      // proceed anyway
-    }
-    router.push(`/app/claims/${targetId}`)
-  }
-
-  if (step === 'extracting') {
+  // Processing / polling view
+  if (intakeState.stage === 'triggering' || intakeState.stage === 'polling' || intakeState.stage === 'done') {
     return (
-      <div className="p-8 flex flex-col items-center justify-center min-h-64">
-        <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mb-4" />
-        <p className="text-gray-600 text-sm">Extracting items from description...</p>
-      </div>
+      <ProcessingView
+        claimId={claimId ?? ''}
+        progress={intakeState.progress}
+        onNavigate={() => router.push(`/app/claims/${claimId}`)}
+      />
     )
   }
 
-  if (step === 'review' || step === 'pricing' || step === 'done') {
+  // Error view
+  if (intakeState.stage === 'error') {
     return (
-      <div className="p-4 md:p-8">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-          {isAdding ? 'Review New Items' : 'Review Extracted Items'}
-        </h1>
-        <p className="text-sm text-gray-500 mb-6">
-          {extractedItems.length} item{extractedItems.length !== 1 ? 's' : ''} in lookup list.
-          Items are added to the claim when you price them. Remove any line at any time.
+      <div className="p-4 md:p-8 max-w-2xl">
+        <h1 className="text-2xl font-semibold text-gray-900 mb-4">Something went wrong</h1>
+        <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-100 mb-4">
+          {intakeState.progress?.error ?? intakeState.triggerError ?? 'An unexpected error occurred'}
         </p>
-
-        <ItemReviewTable
-          items={extractedItems}
-          step={step}
-          addingItem={addingItem}
-          newItem={newItem}
-          pricingTraces={pricingTraces}
-          replayIndices={replayIndices}
-          onRemove={removeItem}
-          onNewItemChange={setNewItem}
-          onAddConfirm={() => {
-            if (!newItem.name.trim()) return
-            setExtractedItems((prev) => [...prev, { ...newItem }])
-            setNewItem(BLANK_ITEM)
-            setAddingItem(false)
-          }}
-          onAddCancel={() => { setAddingItem(false); setNewItem(BLANK_ITEM) }}
-        />
-
-        <div className="flex flex-col sm:flex-row gap-3">
-          {(step === 'review' || step === 'done') && !addingItem && !isPricingInProgress && (
-            <button
-              onClick={() => setAddingItem(true)}
-              className="w-full sm:w-auto border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
-            >
-              + Add Item
-            </button>
-          )}
-          {(step === 'review' || step === 'done') && !isPricingInProgress && (
-            <button
-              onClick={priceAll}
-              disabled={extractedItems.length === 0}
-              className="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              {step === 'done' ? 'Re-price All Items' : 'Price All Items'}
-            </button>
-          )}
-          {step === 'pricing' && (
-            <button disabled className="w-full sm:w-auto bg-blue-400 text-white px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed">
-              Pricing items...
-            </button>
-          )}
+        <div className="flex gap-3">
           <button
-            onClick={handleContinue}
-            disabled={isPricingInProgress}
-            title={isPricingInProgress ? 'Wait for pricing to finish' : undefined}
-            className="w-full sm:w-auto bg-gray-800 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            onClick={() => router.push(`/app/claims/${claimId}`)}
+            className="text-sm text-blue-600 hover:underline"
           >
-            {isAdding ? 'Save to Claim' : 'Continue to Claim Workspace'}
+            Go to claim workspace
           </button>
         </div>
-        {isPricingInProgress && (
-          <p className="text-sm text-amber-700 mt-3">Pricing in progress — items are being added to the claim as lookup runs.</p>
-        )}
       </div>
     )
   }
 
+  // Claim form
   return (
     <div className="p-4 md:p-8">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">
@@ -248,9 +313,9 @@ function NewClaimForm() {
           </div>
         </div>
 
-        {(submitError || error) && (
+        {(submitError || intakeState.triggerError) && (
           <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-100">
-            {submitError || error}
+            {submitError || intakeState.triggerError}
           </p>
         )}
 
@@ -268,7 +333,7 @@ function NewClaimForm() {
             type="submit"
             className="bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
           >
-            {isAdding ? 'Extract Items' : 'Create Claim & Extract Items'}
+            {isAdding ? 'Extract & Price Items' : 'Create Claim & Extract Items'}
           </button>
         </div>
       </form>

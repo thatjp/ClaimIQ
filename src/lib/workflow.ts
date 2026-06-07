@@ -1,5 +1,7 @@
 import { start } from 'workflow/api'
 import { priceItemWorkflow } from '@/workflows/price'
+import { claimIntakeWorkflow, type IntakeInput } from '@/workflows/intake'
+import { initIntakeProgress } from '@/lib/pricing/intake-progress'
 
 export interface ClaimItemInput {
   id?: string
@@ -30,4 +32,26 @@ export async function triggerPriceWorkflow(
   const workflowItem = traceKey ? { ...item, traceKey } : item
   const run = await start(priceItemWorkflow, [workflowItem])
   return { workflowRunId: run.runId, status: 'pending' }
+}
+
+export interface IntakeWorkflowResult {
+  workflowRunId: string
+  intakeKey: string
+  status: 'pending'
+}
+
+export async function triggerIntakeWorkflow(
+  claimId: string,
+  text: string,
+  imageBase64?: string | null
+): Promise<IntakeWorkflowResult> {
+  const intakeKey = crypto.randomUUID()
+
+  // Init KV before start() so polling endpoint always finds a valid state
+  await initIntakeProgress(intakeKey)
+
+  const input: IntakeInput = { intakeKey, claimId, text, imageBase64 }
+  const run = await start(claimIntakeWorkflow, [input])
+
+  return { workflowRunId: run.runId, intakeKey, status: 'pending' }
 }
