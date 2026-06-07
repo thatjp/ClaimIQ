@@ -1,7 +1,6 @@
 import { experimental_transcribe as transcribe } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 
-// Transcription requires OpenAI Whisper — not available via Anthropic
 const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' })
 
 export async function POST(req: Request) {
@@ -12,11 +11,10 @@ export async function POST(req: Request) {
     return Response.json({ error: 'audio file is required' }, { status: 400 })
   }
 
-  const arrayBuffer = await audio.arrayBuffer()
-
   const result = await transcribe({
-    model: openai.transcription('gpt-4o-mini-transcribe'),
-    audio: new Uint8Array(arrayBuffer),
+    model: openai.transcription('whisper-1'),
+    audio: new Uint8Array(await audio.arrayBuffer()),
+    mediaType: 'audio/webm',
     providerOptions: {
       openai: { language: 'en' },
     },

@@ -26,6 +26,12 @@ export function normalizeClaimItem(row: ClaimItem): ClaimItem {
 }
 
 export interface UpdateClaimItemInput {
+  name?: string
+  brand?: string | null
+  model?: string | null
+  category?: string
+  condition?: string
+  quantity?: number
   price_sources?: string[]
   price?: number | null
   price_source?: PriceSource
@@ -52,16 +58,29 @@ export async function updateClaimItem(
     }
 
     const existing = normalizeClaimItem(itemRows[0] as unknown as ClaimItem)
+
+    const identityChanged =
+      ('name' in updates && updates.name !== existing.name) ||
+      ('brand' in updates && updates.brand !== existing.brand) ||
+      ('model' in updates && updates.model !== existing.model) ||
+      ('category' in updates && updates.category !== existing.category) ||
+      ('condition' in updates && updates.condition !== existing.condition)
+
     const merged: ClaimItem = {
       ...existing,
-      price_sources:
-        'price_sources' in updates ? updates.price_sources : existing.price_sources,
-      price: 'price' in updates ? (updates.price ?? undefined) : existing.price,
-      price_source: 'price_source' in updates ? updates.price_source : existing.price_source,
-      approved: 'approved' in updates ? !!updates.approved : existing.approved,
+      name: updates.name ?? existing.name,
+      brand: 'brand' in updates ? (updates.brand ?? undefined) : existing.brand,
+      model: 'model' in updates ? (updates.model ?? undefined) : existing.model,
+      category: updates.category ?? existing.category,
+      condition: updates.condition ?? existing.condition,
+      quantity: updates.quantity ?? existing.quantity,
+      price_sources: identityChanged ? undefined : ('price_sources' in updates ? updates.price_sources : existing.price_sources),
+      price: identityChanged ? undefined : ('price' in updates ? (updates.price ?? undefined) : existing.price),
+      price_source: identityChanged ? undefined : ('price_source' in updates ? updates.price_source : existing.price_source),
+      approved: identityChanged ? false : ('approved' in updates ? !!updates.approved : existing.approved),
     }
 
-    if (updates.approved === true) {
+    if (!identityChanged && updates.approved === true) {
       const { canApproveItem } = await import('@/lib/claims/grounding')
       if (!canApproveItem(merged)) {
         return { item: null, error: 'Item is missing required source URL or price' }
@@ -76,11 +95,17 @@ export async function updateClaimItem(
     const { rows } = await db`
       UPDATE claim_items
       SET
+        name          = ${merged.name},
+        brand         = ${merged.brand ?? null},
+        model         = ${merged.model ?? null},
+        category      = ${merged.category},
+        condition     = ${merged.condition},
+        quantity      = ${merged.quantity},
         price_sources = ${priceSourcesJson},
-        price = ${merged.price ?? null},
-        price_source = ${merged.price_source ?? null},
-        approved = ${merged.approved ?? false},
-        approved_at = ${approvedAt}
+        price         = ${merged.price ?? null},
+        price_source  = ${merged.price_source ?? null},
+        approved      = ${merged.approved ?? false},
+        approved_at   = ${approvedAt}
       WHERE id = ${itemId} AND claim_id = ${claimId}
       RETURNING *
     `

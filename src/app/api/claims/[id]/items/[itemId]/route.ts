@@ -13,6 +13,40 @@ export async function PATCH(
 
   const updates: UpdateClaimItemInput = {}
 
+  if ('name' in body) {
+    if (!body.name || typeof body.name !== 'string') {
+      return Response.json({ error: 'name must be a non-empty string' }, { status: 400 })
+    }
+    updates.name = body.name.trim()
+  }
+
+  if ('brand' in body) updates.brand = body.brand ? String(body.brand).trim() : null
+  if ('model' in body) updates.model = body.model ? String(body.model).trim() : null
+
+  if ('category' in body) {
+    const valid = ['electronics', 'appliances', 'furniture', 'clothing', 'jewelry', 'tools', 'other']
+    if (!valid.includes(body.category)) {
+      return Response.json({ error: 'Invalid category' }, { status: 400 })
+    }
+    updates.category = body.category
+  }
+
+  if ('condition' in body) {
+    const valid = ['new', 'good', 'fair', 'poor']
+    if (!valid.includes(body.condition)) {
+      return Response.json({ error: 'Invalid condition' }, { status: 400 })
+    }
+    updates.condition = body.condition
+  }
+
+  if ('quantity' in body) {
+    const qty = Number(body.quantity)
+    if (!Number.isInteger(qty) || qty < 1) {
+      return Response.json({ error: 'quantity must be a positive integer' }, { status: 400 })
+    }
+    updates.quantity = qty
+  }
+
   if ('price_sources' in body) {
     if (!Array.isArray(body.price_sources)) {
       return Response.json({ error: 'price_sources must be an array' }, { status: 400 })
@@ -24,6 +58,10 @@ export async function PATCH(
   if ('price' in body) {
     updates.price = body.price == null ? null : Number(body.price)
     updates.approved = false
+  }
+
+  if ('price_source' in body && !('manualPrice' in body)) {
+    updates.price_source = body.price_source as UpdateClaimItemInput['price_source']
   }
 
   if ('manualPrice' in body) {
@@ -69,6 +107,8 @@ export async function PATCH(
       const candidate = {
         ...item,
         ...updates,
+        brand: updates.brand ?? item.brand ?? undefined,
+        model: updates.model ?? item.model ?? undefined,
         price_sources: updates.price_sources ?? item.price_sources,
         price: 'price' in updates ? (updates.price ?? undefined) : item.price,
       }

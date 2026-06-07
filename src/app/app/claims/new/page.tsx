@@ -17,48 +17,50 @@ function NewClaimForm() {
   const [dateOfLoss, setDateOfLoss] = useState(new Date().toISOString().split('T')[0])
   const [claimId, setClaimId] = useState<string | null>(existingClaimId)
   const [description, setDescription] = useState('')
-  const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState('')
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
+  const streamRef = useRef<MediaStream | null>(null)
+  const chunksRef = useRef<Blob[]>([])
 
   const { state: intakeState, trigger } = useIntakeWorkflow()
 
-  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const result = ev.target?.result as string
-      setImageBase64(result.split(',')[1])
+  async function transcribeBlob(blob: Blob) {
+    setTranscribing(true)
+    try {
+      const formData = new FormData()
+      formData.append('audio', new File([blob], 'audio.webm', { type: 'audio/webm' }))
+      const res = await fetch('/api/transcribe', { method: 'POST', body: formData })
+      if (res.ok) {
+        const { text } = await res.json() as { text: string }
+        const trimmed = text.trim()
+        if (trimmed) {
+          setDescription((prev) => prev ? `${prev} ${trimmed}` : trimmed)
+        }
+      }
+    } finally {
+      setTranscribing(false)
     }
-    reader.readAsDataURL(file)
   }
 
   async function startRecording() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    streamRef.current = stream
+    chunksRef.current = []
     const mediaRecorder = new MediaRecorder(stream)
-    audioChunksRef.current = []
-    mediaRecorder.ondataavailable = (e) => audioChunksRef.current.push(e.data)
-    mediaRecorder.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop())
-      setTranscribing(true)
-      try {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        const formData = new FormData()
-        formData.append('audio', blob, 'recording.webm')
-        const res = await fetch('/api/transcribe', { method: 'POST', body: formData })
-        if (res.ok) {
-          const { text } = await res.json() as { text: string }
-          setDescription((prev) => prev ? `${prev} ${text}` : text)
-        }
-      } finally {
-        setTranscribing(false)
-      }
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data)
     }
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      chunksRef.current = []
+      transcribeBlob(blob)
+    }
+
     mediaRecorderRef.current = mediaRecorder
     mediaRecorder.start()
     setRecording(true)
@@ -66,6 +68,8 @@ function NewClaimForm() {
 
   function stopRecording() {
     mediaRecorderRef.current?.stop()
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
     setRecording(false)
   }
 
@@ -89,7 +93,7 @@ function NewClaimForm() {
 
       // Wait until the workflow is triggered (intake_run_id written to DB), then redirect.
       // Pricing continues as a durable background workflow — dashboard reconnects via polling.
-      await trigger(resolvedClaimId!, description, imageBase64, () => {})
+      await trigger(resolvedClaimId!, description, null, () => {})
       router.push('/app/dashboard')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'An error occurred')
@@ -184,26 +188,9 @@ function NewClaimForm() {
           <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Item Description</h2>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-gray-700">
-                {isAdding ? 'Describe additional items' : 'Describe damaged or lost items'}
-              </label>
-              <button
-                type="button"
-                onClick={recording ? stopRecording : startRecording}
-                disabled={transcribing}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                  recording
-                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                    : transcribing
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                <span className={`w-2 h-2 rounded-full ${recording ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} />
-                {recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Record'}
-              </button>
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {isAdding ? 'Describe additional items' : 'Describe damaged or lost items'}
+            </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -217,16 +204,23 @@ function NewClaimForm() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Photo (optional)</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className="text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
-            />
-            <p className="text-xs text-gray-400 mt-1">Attach a photo for AI-assisted item identification.</p>
-          </div>
+          <button
+            type="button"
+            onClick={recording ? stopRecording : startRecording}
+            disabled={transcribing}
+            className={`w-full flex items-center justify-center gap-3 py-4 rounded-lg border-2 text-sm font-medium transition-colors ${
+              recording
+                ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                : transcribing
+                  ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
+                  : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 hover:border-gray-300'
+            }`}
+          >
+            <span className={`w-3 h-3 rounded-full shrink-0 ${
+              recording ? 'bg-red-500 animate-pulse' : transcribing ? 'bg-gray-300' : 'bg-gray-400'
+            }`} />
+            {recording ? 'Stop recording' : transcribing ? 'Transcribing…' : 'Record voice description'}
+          </button>
         </div>
 
         {(submitError || intakeState.triggerError) && (

@@ -63,6 +63,18 @@ export function useClaimPricing(
               : i
           )
         )
+        // Persist the resolved price back to claim_items so it survives a page reload
+        if (item.claim_id) {
+          await fetch(`/api/claims/${item.claim_id}/items/${item.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              price: outcome.price,
+              price_sources: outcome.sources ?? [],
+              price_source: outcome.source,
+            }),
+          }).catch(() => { /* non-fatal — price is already in the shared cache */ })
+        }
       }
     } catch {
       // keep last known state
