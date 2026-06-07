@@ -1,87 +1,56 @@
-import { randomUUID } from 'crypto'
-import { kv } from '@/lib/kv'
-import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
-import { triggerPriceWorkflow } from '@/lib/workflow'
+import { db } from '@/lib/db'
+import { kv } from '@/lib/kv'
+import { traceStep, type PriceLayer, type PriceTraceStep } from '@/lib/pricing/trace'
+import { triggerPriceWorkflow, type ClaimItemInput } from '@/lib/workflow'
 import { initLiveTrace } from '@/lib/pricing/live-trace'
-import {
-  buildLivePriceTrace,
-  finalizeSyncHit,
-  traceStep,
-  type PriceTraceStep,
-} from '@/lib/pricing/trace'
+
+export const maxDuration = 300
 
 function log(layer: string, hit: boolean, durationMs: number, meta?: Record<string, unknown>) {
   console.log(JSON.stringify({ service: 'price-lookup', layer, hit, durationMs, ...meta }))
 }
 
-export async function POST(req: Request) {
-  const { item, cacheOnly } = await req.json()
+interface PriceResult {
+  price: number
+  sources: string[]
+  source: PriceLayer
+  stale?: boolean
+}
 
-  if (!item || !item.name || !item.condition) {
-    return Response.json({ error: 'item.name and item.condition are required' }, { status: 400 })
-  }
+type StreamEvent =
+  | { type: 'layer'; step: PriceTraceStep }
+  | { type: 'result'; price: number; sources: string[]; source: PriceLayer; stale?: boolean }
+  | { type: 'workflow_started'; workflowRunId: string }
+  | { type: 'error'; message: string }
 
-  const refreshFromSource =
-    typeof item.refreshFromSource === 'string' && item.refreshFromSource.trim()
-      ? item.refreshFromSource.trim()
-      : undefined
-
-  const itemKey = { name: item.name, brand: item.brand || '', condition: item.condition, category: item.category || '' }
-  const syncTrace: PriceTraceStep[] = []
-
-  if (refreshFromSource) {
-    syncTrace.push(traceStep('kv_cache', 'skipped', undefined, 'source refresh'))
-    syncTrace.push(traceStep('vector_cache', 'skipped', undefined, 'source refresh'))
-
-    if (cacheOnly) {
-      return Response.json({ status: 'miss', syncTrace, trace: syncTrace })
-    }
-
-    const workflowItem = {
-      ...item,
-      refreshFromSource,
-      priceSources: item.priceSources ?? item.price_sources,
-    }
-    const traceKey = randomUUID()
-    const t0 = performance.now()
-    const { workflowRunId } = await triggerPriceWorkflow(workflowItem, traceKey)
-    const triggerMs = Math.round(performance.now() - t0)
-    log('workflow_trigger', true, triggerMs, { ...itemKey, workflowRunId, traceKey, mode: 'source_refresh' })
-
-    try {
-      await initLiveTrace(traceKey, workflowRunId, syncTrace)
-    } catch (err) {
-      console.warn('[price] Failed to init live trace:', err instanceof Error ? err.message : err)
-    }
-
-    const trace = buildLivePriceTrace(syncTrace, [], 'web_search')
-    return Response.json({ status: 'pending', workflowRunId, syncTrace, trace })
-  }
-
-  // Layer 1: KV exact cache (7-day TTL)
+async function runPriceLadder(
+  item: ClaimItemInput,
+  emit: (event: StreamEvent) => void
+): Promise<PriceResult | null> {
+  // Layer 1: KV exact cache
   try {
+    emit({ type: 'layer', step: traceStep('kv_cache', 'running') })
     const cacheKey = `price:${item.name}:${item.brand || ''}:${item.condition}`
     const t0 = performance.now()
     const cached = await kv.get<{ price: number; sources: string[]; cached_at: string }>(cacheKey)
     const durationMs = Math.round(performance.now() - t0)
-    log('kv_cache', !!cached, durationMs, { ...itemKey, price: cached?.price })
 
     if (cached) {
-      syncTrace.push(traceStep('kv_cache', 'hit', durationMs))
-      const trace = finalizeSyncHit(syncTrace, 'kv_cache')
-      return Response.json({ ...cached, source: 'cache', trace })
+      log('kv_cache', true, durationMs, { name: item.name, price: cached.price })
+      emit({ type: 'layer', step: traceStep('kv_cache', 'hit', durationMs) })
+      return { price: cached.price, sources: cached.sources, source: 'kv_cache' }
     }
-
-    syncTrace.push(traceStep('kv_cache', 'miss', durationMs))
+    log('kv_cache', false, durationMs, { name: item.name })
+    emit({ type: 'layer', step: traceStep('kv_cache', 'miss', durationMs) })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.warn('[price] KV cache unavailable:', message)
-    syncTrace.push(traceStep('kv_cache', 'error', undefined, message))
+    emit({ type: 'layer', step: traceStep('kv_cache', 'error', undefined, 'unavailable') })
+    console.warn('[price] KV unavailable:', err instanceof Error ? err.message : err)
   }
 
-  // Layer 2: pgvector similarity search (90-day TTL)
+  // Layer 2: pgvector similarity
   try {
+    emit({ type: 'layer', step: traceStep('vector_cache', 'running') })
     const t0 = performance.now()
     const embedding = await embedItem(item)
     const embedMs = Math.round(performance.now() - t0)
@@ -98,73 +67,83 @@ export async function POST(req: Request) {
     const distance = rows[0]?.distance as number | undefined
 
     if (rows.length > 0 && distance != null && distance < 0.15) {
-      const ageMs = Date.now() - new Date(rows[0].cached_at as string | Date).getTime()
+      const ageMs = Date.now() - new Date(rows[0].cached_at as string).getTime()
       const staleDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
       const stale = staleDays > 90
-
-      log('vector_cache', true, totalMs, {
-        ...itemKey,
-        embedMs,
-        queryMs,
-        distance,
-        price: rows[0].price,
-        staleDays,
-        stale,
+      log('vector_cache', true, totalMs, { name: item.name, distance, staleDays, stale })
+      emit({
+        type: 'layer',
+        step: traceStep('vector_cache', 'hit', totalMs, stale ? `${staleDays}d old` : `distance ${distance.toFixed(3)}`),
       })
-
-      syncTrace.push(
-        traceStep('vector_cache', 'hit', totalMs, `distance ${distance.toFixed(3)}${stale ? ` · ${staleDays}d old` : ''}`)
-      )
-      const hitLayer = stale ? 'vector_cache' : 'vector_cache'
-      const trace = finalizeSyncHit(syncTrace, hitLayer)
-
-      return Response.json({
-        ...rows[0],
-        source: stale ? 'vector_cache_stale' : 'vector_cache',
+      return {
+        price: rows[0].price as number,
+        sources: (rows[0].sources as string[]) ?? [],
+        source: 'vector_cache',
         stale,
-        trace,
-      })
+      }
     }
 
-    log('vector_cache', false, totalMs, {
-      ...itemKey,
-      embedMs,
-      queryMs,
-      distance: distance ?? null,
+    log('vector_cache', false, totalMs, { name: item.name, distance: distance ?? null })
+    emit({
+      type: 'layer',
+      step: traceStep('vector_cache', 'miss', totalMs, distance != null ? `distance ${distance.toFixed(3)}` : 'no matches'),
     })
-
-    syncTrace.push(
-      traceStep(
-        'vector_cache',
-        'miss',
-        totalMs,
-        distance != null ? `distance ${distance.toFixed(3)}` : 'no matches'
-      )
-    )
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.warn('[price] pgvector search unavailable:', message)
-    syncTrace.push(traceStep('vector_cache', 'error', undefined, message))
+    emit({ type: 'layer', step: traceStep('vector_cache', 'error', undefined, 'unavailable') })
+    console.warn('[price] pgvector unavailable:', err instanceof Error ? err.message : err)
   }
 
-  if (cacheOnly) {
-    return Response.json({ status: 'miss', syncTrace, trace: syncTrace })
+  // Cache missed — workflow will handle eBay + Amazon
+  return null
+}
+
+export async function POST(req: Request) {
+  const { item } = await req.json()
+
+  if (!item?.name || !item?.condition) {
+    return Response.json({ error: 'item.name and item.condition are required' }, { status: 400 })
   }
 
-  // Layer 3: Trigger Workflow for eBay / web search
-  const traceKey = randomUUID()
-  const t0 = performance.now()
-  const { workflowRunId } = await triggerPriceWorkflow(item, traceKey)
-  const triggerMs = Math.round(performance.now() - t0)
-  log('workflow_trigger', true, triggerMs, { ...itemKey, workflowRunId, traceKey })
+  const encoder = new TextEncoder()
 
-  try {
-    await initLiveTrace(traceKey, workflowRunId, syncTrace)
-  } catch (err) {
-    console.warn('[price] Failed to init live trace:', err instanceof Error ? err.message : err)
-  }
+  const stream = new ReadableStream({
+    async start(controller) {
+      function emit(event: StreamEvent) {
+        controller.enqueue(encoder.encode(`2:${JSON.stringify([event])}\n`))
+      }
 
-  const trace = buildLivePriceTrace(syncTrace, [], 'ebay')
+      try {
+        const claimItem = item as ClaimItemInput
+        const syncTrace: PriceTraceStep[] = []
+        const result = await runPriceLadder(claimItem, (event) => {
+          emit(event)
+          if (event.type === 'layer') syncTrace.push(event.step)
+        })
 
-  return Response.json({ status: 'pending', workflowRunId, syncTrace, trace })
+        if (result) {
+          emit({ type: 'result', ...result })
+        } else {
+          // Cache missed — hand off to workflow for eBay + Amazon
+          const traceKey = crypto.randomUUID()
+          const { workflowRunId } = await triggerPriceWorkflow(claimItem, traceKey)
+          await initLiveTrace(traceKey, workflowRunId, syncTrace)
+          emit({ type: 'workflow_started', workflowRunId })
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Price lookup failed'
+        emit({ type: 'error', message })
+        console.error('[price] Fatal error:', message)
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }

@@ -12,6 +12,7 @@ export interface ClaimItem {
   quantity: number
   adjuster_notes?: string
   price?: number
+  price_source?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'manual'
   price_sources?: string[]
   price_cached_at?: string
   approved?: boolean
@@ -96,6 +97,7 @@ export interface UpdateClaimItemInput {
   estimated_age?: number | null
   price_sources?: string[]
   price?: number | null
+  price_source?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'manual'
   approved?: boolean
 }
 
@@ -126,6 +128,7 @@ export async function updateClaimItem(
       price_sources:
         'price_sources' in updates ? updates.price_sources : existing.price_sources,
       price: 'price' in updates ? (updates.price ?? undefined) : existing.price,
+      price_source: 'price_source' in updates ? updates.price_source : existing.price_source,
       approved: 'approved' in updates ? !!updates.approved : existing.approved,
     }
 
@@ -147,6 +150,7 @@ export async function updateClaimItem(
         estimated_age = ${merged.estimated_age ?? null},
         price_sources = ${priceSourcesJson},
         price = ${merged.price ?? null},
+        price_source = ${merged.price_source ?? null},
         approved = ${merged.approved ?? false},
         approved_at = ${approvedAt}
       WHERE id = ${itemId} AND claim_id = ${claimId}

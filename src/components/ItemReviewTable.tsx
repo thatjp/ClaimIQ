@@ -65,11 +65,9 @@ export function ItemReviewTable({
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <PriceCell item={item} />
-                {step === 'review' && (
-                  <button onClick={() => onRemove(i)} className="text-xs text-red-400 hover:text-red-600">
-                    Remove
-                  </button>
-                )}
+                <button onClick={() => onRemove(i)} className="text-xs text-red-400 hover:text-red-600">
+                  Remove
+                </button>
               </div>
             </div>
           </div>
@@ -174,11 +172,9 @@ export function ItemReviewTable({
                 <td className="px-4 py-3 text-gray-700">{item.quantity}</td>
                 <td className="px-4 py-3"><PriceCell item={item} /></td>
                 <td className="px-4 py-3 text-right">
-                  {step === 'review' && (
-                    <button onClick={() => onRemove(i)} className="text-xs text-red-400 hover:text-red-600">
-                      Remove
-                    </button>
-                  )}
+                  <button onClick={() => onRemove(i)} className="text-xs text-red-400 hover:text-red-600">
+                    Remove
+                  </button>
                 </td>
               </tr>
             ))}

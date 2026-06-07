@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS claim_items (
 
 CREATE INDEX IF NOT EXISTS claim_items_claim_id_idx ON claim_items(claim_id);
 
--- Requires pgvector extension
+-- Requires pgvector extension (CREATE EXTENSION IF NOT EXISTS vector;)
 CREATE TABLE IF NOT EXISTS item_prices (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
@@ -53,8 +53,11 @@ CREATE TABLE IF NOT EXISTS item_prices (
   condition TEXT NOT NULL,
   price NUMERIC NOT NULL,
   sources JSONB,
-  -- embedding vector(1536), -- Uncomment after: CREATE EXTENSION IF NOT EXISTS vector;
-  cached_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  embedding vector(512),
+  price_source TEXT,
+  cached_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (name, brand, condition)
 );
 
 CREATE INDEX IF NOT EXISTS item_prices_cached_at_idx ON item_prices(cached_at);
+CREATE INDEX IF NOT EXISTS item_prices_embedding_idx ON item_prices USING ivfflat (embedding vector_cosine_ops);

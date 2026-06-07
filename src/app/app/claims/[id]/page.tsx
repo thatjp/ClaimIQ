@@ -28,10 +28,21 @@ export default function ClaimWorkspacePage() {
   const [claim, setClaim] = useState<Claim | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const { refreshPrice, getTraceForItem, shouldReplay, isPricing, canRefreshPrice } =
-    useClaimPricing(claimId, (updater) =>
-      setClaim((prev) => (prev ? { ...prev, items: updater(prev.items) } : prev))
+  const { pricingState, refreshPrice } = useClaimPricing(
+    (updater) => setClaim((prev) => (prev ? { ...prev, items: updater(prev.items) } : prev))
+  )
+
+  async function handleManualPrice(item: ClaimItem, price: number) {
+    const { item: updated } = await patchClaimItem(claimId, item.id, {
+      manualPrice: price,
+      itemName: item.name,
+      itemBrand: item.brand,
+      itemCondition: item.condition,
+    })
+    setClaim((prev) =>
+      prev ? { ...prev, items: prev.items.map((i) => (i.id === updated.id ? updated : i)) } : prev
     )
+  }
 
   useEffect(() => {
     async function loadClaim() {
@@ -46,32 +57,6 @@ export default function ClaimWorkspacePage() {
     }
     loadClaim()
   }, [claimId])
-
-  async function handleUpdateItem(itemId: string, updates: Record<string, unknown>) {
-    setClaim((prev) => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        items: prev.items.map((i) =>
-          i.id === itemId ? { ...i, ...(updates as Partial<ClaimItem>) } : i
-        ),
-      }
-    })
-
-    try {
-      const { item } = await patchClaimItem(claimId, itemId, updates)
-      setClaim((prev) =>
-        prev
-          ? {
-              ...prev,
-              items: prev.items.map((i) => (i.id === itemId ? { ...i, ...item } : i)),
-            }
-          : prev
-      )
-    } catch (err) {
-      console.error(err)
-    }
-  }
 
   if (loading) {
     return (
@@ -96,12 +81,9 @@ export default function ClaimWorkspacePage() {
         <ClaimHeader claim={claim} claimId={claimId} />
         <ClaimItemsTable
           items={claim.items}
-          getTraceForItem={getTraceForItem}
-          shouldReplay={shouldReplay}
-          isPricing={isPricing}
-          canRefreshPrice={canRefreshPrice}
+          pricingState={pricingState}
           onRefreshPrice={(item: ClaimItem) => refreshPrice(item)}
-          onUpdateItem={handleUpdateItem}
+          onManualPrice={handleManualPrice}
         />
       </div>
       <AIChatPanel claimId={claimId} />

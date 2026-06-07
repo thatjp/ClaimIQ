@@ -1,4 +1,4 @@
-import { mergePriceTrace, type PriceTraceStep } from '@/lib/pricing/trace'
+import { traceStep, markSkippedAfterHit, PRICE_LADDER, type PriceTraceStep } from '@/lib/pricing/trace'
 import type { ClaimItem } from '@/types/items'
 
 export type PriceLookupItem = Pick<
@@ -7,197 +7,163 @@ export type PriceLookupItem = Pick<
 >
 
 export interface PriceLookupOptions {
-  /** Called whenever the pipeline trace updates (initial pending state + each poll tick). */
   onTraceUpdate?: (trace: PriceTraceStep[]) => void
-  /** Refresh using the first claim source URL instead of the full price ladder. */
-  refreshFromSources?: boolean
-}
-
-export interface PriceLookupResponse {
-  price?: number
-  sources?: string[]
-  source?: ClaimItem['priceSource']
-  status?: 'pending'
-  workflowRunId?: string
-  syncTrace?: PriceTraceStep[]
-  trace?: PriceTraceStep[]
-}
-
-export interface PricePollResponse {
-  status: string
-  price?: number
-  sources?: string[]
-  source?: ClaimItem['priceSource']
-  workflowTrace?: PriceTraceStep[]
-  syncTrace?: PriceTraceStep[]
-  trace?: PriceTraceStep[]
 }
 
 export interface PriceLookupOutcome {
   price?: number
   sources?: string[]
   source?: ClaimItem['priceSource']
+  stale?: boolean
   trace: PriceTraceStep[]
   error?: boolean
 }
 
-const DEFAULT_POLL_ATTEMPTS = 60
-const DEFAULT_POLL_INTERVAL_MS = 3000
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms))
+function buildPendingTrace(): PriceTraceStep[] {
+  return PRICE_LADDER.map(({ layer }, i) =>
+    traceStep(layer, i === 0 ? 'running' : 'pending')
+  )
 }
 
-function toRequestItem(item: PriceLookupItem, options?: PriceLookupOptions) {
-  const firstSource = item.price_sources?.[0]
-  const refreshFromSource =
-    options?.refreshFromSources && firstSource ? firstSource : undefined
+function applyLayerUpdate(
+  current: PriceTraceStep[],
+  incoming: PriceTraceStep
+): PriceTraceStep[] {
+  const updated = current.map((s) => (s.layer === incoming.layer ? incoming : s))
 
-  return {
-    name: item.name,
-    brand: item.brand,
-    model: item.model,
-    category: item.category,
-    condition: item.condition,
-    estimatedAge: item.estimated_age,
-    quantity: item.quantity,
-    priceSources: item.price_sources,
-    refreshFromSource,
+  // If this layer is now running, mark all earlier pending ones as skipped
+  if (incoming.status === 'running') {
+    const runningIdx = PRICE_LADDER.findIndex((l) => l.layer === incoming.layer)
+    return updated.map((s, i) => (i < runningIdx && s.status === 'pending' ? { ...s, status: 'skipped' as const } : s))
   }
-}
 
-function outcomeFromSyncResponse(data: PriceLookupResponse): PriceLookupOutcome | null {
-  if (data.price == null || !data.trace) return null
-  return {
-    price: data.price,
-    sources: data.sources,
-    source: data.source,
-    trace: data.trace,
+  // If this layer hit, mark all later ones as skipped
+  if (incoming.status === 'hit') {
+    return markSkippedAfterHit(updated)
   }
+
+  return updated
 }
 
-function emitTraceUpdate(
-  options: PriceLookupOptions | undefined,
-  trace: PriceTraceStep[] | undefined
-) {
-  if (trace?.length) options?.onTraceUpdate?.(trace)
-}
-
-async function postPriceLookup(
-  item: PriceLookupItem,
-  options?: PriceLookupOptions,
-  cacheOnly = false
-): Promise<PriceLookupResponse | null> {
-  try {
-    const res = await fetch('/api/price', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item: toRequestItem(item, options), cacheOnly }),
-    })
-    if (!res.ok) return null
-    return (await res.json()) as PriceLookupResponse
-  } catch {
-    return null
-  }
-}
-
-/** Re-check KV/vector cache after workflow poll timeout or failure. */
-async function fallbackPriceFromCache(
-  item: PriceLookupItem,
+async function pollWorkflow(
+  workflowRunId: string,
+  trace: PriceTraceStep[],
   options?: PriceLookupOptions
-): Promise<PriceLookupOutcome | null> {
-  const data = await postPriceLookup(item, options, true)
-  if (!data) return null
-
-  // Only accept a sync hit — never re-trigger workflow
-  return outcomeFromSyncResponse(data)
-}
-
-export async function pollForPriceResult(
-  runId: string,
-  syncTrace: PriceTraceStep[],
-  item?: PriceLookupItem,
-  options?: PriceLookupOptions & {
-    maxAttempts?: number
-    intervalMs?: number
-    skipCacheFallback?: boolean
-  }
 ): Promise<PriceLookupOutcome> {
-  const maxAttempts = options?.maxAttempts ?? DEFAULT_POLL_ATTEMPTS
-  const intervalMs = options?.intervalMs ?? DEFAULT_POLL_INTERVAL_MS
+  const POLL_INTERVAL = 1500
+  const MAX_POLLS = 120 // 3 minutes
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL))
+
     try {
-      const res = await fetch(`/api/price/${runId}`)
-      let data: PricePollResponse | null = null
-      try {
-        data = (await res.json()) as PricePollResponse
-      } catch {
-        // ignore parse errors — retry below
+      const res = await fetch(`/api/price/${workflowRunId}`)
+      if (!res.ok) continue
+
+      const data = await res.json() as Record<string, unknown>
+
+      if (data.workflowTrace) {
+        const workflowSteps = data.workflowTrace as PriceTraceStep[]
+        for (const step of workflowSteps) {
+          trace = applyLayerUpdate(trace, step)
+        }
+        options?.onTraceUpdate?.(trace)
       }
 
-      if (data?.trace?.length) {
-        emitTraceUpdate(options, data.trace)
-      } else if (data?.workflowTrace?.length) {
-        emitTraceUpdate(options, mergePriceTrace(data.syncTrace ?? syncTrace, data.workflowTrace))
-      }
-
-      if (data?.status === 'completed' && data.price != null) {
-        const trace = mergePriceTrace(syncTrace, data.workflowTrace ?? [])
-        emitTraceUpdate(options, trace)
+      if (data.status === 'completed') {
         return {
-          price: data.price,
-          sources: data.sources,
-          source: data.source,
+          price: data.price as number,
+          sources: data.sources as string[],
+          source: data.source as ClaimItem['priceSource'],
           trace,
         }
       }
 
-      if (data?.status === 'failed') {
-        break
+      if (data.status === 'failed') {
+        return { trace, error: true }
       }
-
-      // Still running, or transient HTTP error — keep polling
     } catch {
-      // network blip — retry until attempts exhausted
-    }
-
-    if (attempt < maxAttempts - 1) {
-      await sleep(intervalMs)
+      // network blip — keep polling
     }
   }
 
-  if (item && !options?.skipCacheFallback && !options?.refreshFromSources) {
-    const cached = await fallbackPriceFromCache(item, options)
-    if (cached) {
-      emitTraceUpdate(options, cached.trace)
-      return cached
-    }
-  }
-
-  return { trace: syncTrace, error: true }
+  return { trace, error: true }
 }
 
 export async function lookupItemPrice(
   item: PriceLookupItem,
   options?: PriceLookupOptions
 ): Promise<PriceLookupOutcome> {
-  const data = await postPriceLookup(item, options)
-  if (!data) return { trace: [], error: true }
+  let trace = buildPendingTrace()
+  options?.onTraceUpdate?.(trace)
 
-  emitTraceUpdate(options, data.trace)
+  let result: PriceLookupOutcome = { trace, error: true }
 
-  const sync = outcomeFromSyncResponse(data)
-  if (sync) return sync
+  try {
+    const res = await fetch('/api/price', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        item: {
+          name: item.name,
+          brand: item.brand,
+          model: item.model,
+          category: item.category,
+          condition: item.condition,
+          estimatedAge: item.estimated_age,
+          quantity: item.quantity,
+        },
+      }),
+    })
 
-  if (data.workflowRunId) {
-    return pollForPriceResult(
-      data.workflowRunId,
-      data.syncTrace ?? data.trace ?? [],
-      item,
-      options
-    )
+    if (!res.ok || !res.body) return { trace, error: true }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        if (!line.startsWith('2:')) continue
+        try {
+          const events = JSON.parse(line.slice(2)) as unknown[]
+          for (const event of events) {
+            if (typeof event !== 'object' || event === null) continue
+            const e = event as Record<string, unknown>
+
+            if (e.type === 'layer' && e.step) {
+              trace = applyLayerUpdate(trace, e.step as PriceTraceStep)
+              options?.onTraceUpdate?.(trace)
+            } else if (e.type === 'result') {
+              result = {
+                price: e.price as number,
+                sources: e.sources as string[],
+                source: e.source as ClaimItem['priceSource'],
+                stale: e.stale as boolean | undefined,
+                trace,
+              }
+            } else if (e.type === 'workflow_started') {
+              // Cache missed — poll the workflow for eBay + Amazon results
+              return pollWorkflow(e.workflowRunId as string, trace, options)
+            } else if (e.type === 'error') {
+              result = { trace, error: true }
+            }
+          }
+        } catch {
+          // malformed chunk — skip
+        }
+      }
+    }
+  } catch {
+    return { trace, error: true }
   }
 
-  return { trace: data.trace ?? [], error: true }
+  return result
 }

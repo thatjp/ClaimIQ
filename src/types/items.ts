@@ -15,6 +15,8 @@ export interface ExtractedItem {
   priceSource?: ClaimItem['priceSource']
   priceTrace?: PriceTraceStep[]
   workflowRunId?: string
+  /** Set after the item is persisted to the claim during price lookup. */
+  claimItemId?: string
 }
 
 export const BLANK_ITEM: ExtractedItem = {
@@ -42,7 +44,7 @@ export interface ClaimItem {
   adjuster_notes?: string
   price?: number
   price_sources?: string[]
-  priceSource?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'web_search' | 'estimated'
+  priceSource?: 'cache' | 'vector_cache' | 'vector_cache_stale' | 'ebay' | 'amazon' | 'manual'
   priceTrace?: PriceTraceStep[]
   priceStale?: boolean
   approved?: boolean

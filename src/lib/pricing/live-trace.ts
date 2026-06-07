@@ -1,9 +1,5 @@
 import { kv } from '@/lib/kv'
-import {
-  buildLivePriceTrace,
-  type PriceLayer,
-  type PriceTraceStep,
-} from '@/lib/pricing/trace'
+import type { PriceLayer, PriceTraceStep } from '@/lib/pricing/trace'
 
 export interface LivePriceTraceState {
   syncTrace: PriceTraceStep[]
@@ -61,5 +57,9 @@ export async function updateLiveTrace(
 }
 
 export function liveTraceToSteps(state: LivePriceTraceState): PriceTraceStep[] {
-  return buildLivePriceTrace(state.syncTrace, state.workflowTrace, state.activeLayer)
+  const byLayer = new Map<PriceLayer, PriceTraceStep>()
+  for (const step of [...state.syncTrace, ...state.workflowTrace]) {
+    byLayer.set(step.layer, step)
+  }
+  return Array.from(byLayer.values())
 }

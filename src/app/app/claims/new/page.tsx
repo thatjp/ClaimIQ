@@ -24,8 +24,9 @@ export default function NewClaimPage() {
     description, setDescription, error,
     recording, transcribing,
     handleImageChange, startRecording, stopRecording, priceAll,
+    removeItem, saveUnpricedItemsToClaim,
     isPricingInProgress,
-  } = useItemExtraction()
+  } = useItemExtraction(claimId ?? undefined)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -59,11 +60,7 @@ export default function NewClaimPage() {
   async function handleContinue() {
     if (!claimId) return
     try {
-      await fetch(`/api/claims/${claimId}/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: extractedItems }),
-      })
+      await saveUnpricedItemsToClaim()
     } catch {
       // proceed anyway
     }
@@ -84,8 +81,8 @@ export default function NewClaimPage() {
       <div className="p-4 md:p-8">
         <h1 className="text-2xl font-semibold text-gray-900 mb-2">Review Extracted Items</h1>
         <p className="text-sm text-gray-500 mb-6">
-          {extractedItems.length} item{extractedItems.length !== 1 ? 's' : ''} extracted from your description.
-          Add, remove, or price items before proceeding.
+          {extractedItems.length} item{extractedItems.length !== 1 ? 's' : ''} in lookup list.
+          Items are added to the claim when you price them. Remove any line at any time.
         </p>
 
         <ItemReviewTable
@@ -95,7 +92,7 @@ export default function NewClaimPage() {
           newItem={newItem}
           pricingTraces={pricingTraces}
           replayIndices={replayIndices}
-          onRemove={(i) => setExtractedItems((prev) => prev.filter((_, idx) => idx !== i))}
+          onRemove={removeItem}
           onNewItemChange={setNewItem}
           onAddConfirm={() => {
             if (!newItem.name.trim()) return
@@ -107,7 +104,7 @@ export default function NewClaimPage() {
         />
 
         <div className="flex flex-col sm:flex-row gap-3">
-          {step === 'review' && !addingItem && (
+          {(step === 'review' || step === 'done') && !addingItem && !isPricingInProgress && (
             <button
               onClick={() => setAddingItem(true)}
               className="w-full sm:w-auto border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
@@ -115,13 +112,13 @@ export default function NewClaimPage() {
               + Add Item
             </button>
           )}
-          {step === 'review' && (
+          {(step === 'review' || step === 'done') && !isPricingInProgress && (
             <button
               onClick={priceAll}
               disabled={extractedItems.length === 0}
               className="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
-              Price All Items
+              {step === 'done' ? 'Re-price All Items' : 'Price All Items'}
             </button>
           )}
           {step === 'pricing' && (
@@ -139,7 +136,7 @@ export default function NewClaimPage() {
           </button>
         </div>
         {isPricingInProgress && (
-          <p className="text-sm text-amber-700 mt-3">Pricing in progress — wait for all items to finish before continuing.</p>
+          <p className="text-sm text-amber-700 mt-3">Pricing in progress — items are being added to the claim as lookup runs.</p>
         )}
       </div>
     )

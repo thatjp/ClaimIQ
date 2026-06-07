@@ -1,11 +1,11 @@
 import { getRun } from 'workflow/api'
 import { readLiveTraceByRunId, liveTraceToSteps } from '@/lib/pricing/live-trace'
-import { mergePriceTrace, type PriceTraceStep } from '@/lib/pricing/trace'
+import type { PriceTraceStep } from '@/lib/pricing/trace'
 
 interface WorkflowResult {
   price: number
   sources: string[]
-  source: 'ebay' | 'amazon' | 'web_search' | 'estimated'
+  source: 'ebay' | 'amazon' | null
   trace?: PriceTraceStep[]
 }
 

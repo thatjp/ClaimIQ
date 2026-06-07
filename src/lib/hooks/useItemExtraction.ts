@@ -3,12 +3,58 @@
 import { useState, useRef } from 'react'
 import { mapWithConcurrencyLimit, PRICE_LOOKUP_CONCURRENCY } from '@/lib/pricing/batch'
 import { lookupItemPrice } from '@/lib/pricing/client'
+import { patchClaimItem, postClaimItems, deleteClaimItem } from '@/lib/claims/client'
 import type { PriceTraceStep } from '@/lib/pricing/trace'
 import { ExtractedItem } from '@/types/items'
 
 export type ExtractionStep = 'form' | 'extracting' | 'review' | 'pricing' | 'done'
 
-export function useItemExtraction() {
+function reindexTraces(
+  traces: Record<number, PriceTraceStep[]>,
+  removedIndex: number
+): Record<number, PriceTraceStep[]> {
+  const next: Record<number, PriceTraceStep[]> = {}
+  for (const [key, trace] of Object.entries(traces)) {
+    const idx = Number(key)
+    if (idx === removedIndex) continue
+    next[idx > removedIndex ? idx - 1 : idx] = trace
+  }
+  return next
+}
+
+function reindexReplayIndices(indices: Set<number>, removedIndex: number): Set<number> {
+  const next = new Set<number>()
+  for (const idx of indices) {
+    if (idx === removedIndex) continue
+    next.add(idx > removedIndex ? idx - 1 : idx)
+  }
+  return next
+}
+
+async function persistNewItemsToClaim(
+  claimId: string,
+  items: ExtractedItem[]
+): Promise<ExtractedItem[]> {
+  const pending = items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => !item.claimItemId)
+
+  if (pending.length === 0) return items
+
+  const { items: rows } = await postClaimItems(
+    claimId,
+    pending.map(({ item }) => item)
+  )
+
+  const updated = [...items]
+  pending.forEach(({ index }, j) => {
+    const row = rows[j] as { id: string }
+    updated[index] = { ...updated[index], claimItemId: row.id }
+  })
+  return updated
+}
+
+export function useItemExtraction(claimId?: string) {
   const [step, setStep] = useState<ExtractionStep>('form')
   const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([])
   const [pricingTraces, setPricingTraces] = useState<Record<number, PriceTraceStep[]>>({})
@@ -82,16 +128,48 @@ export function useItemExtraction() {
     }
   }
 
+  async function removeItem(index: number) {
+    const item = extractedItems[index]
+    if (claimId && item?.claimItemId) {
+      try {
+        await deleteClaimItem(claimId, item.claimItemId)
+      } catch (err) {
+        console.error(err)
+      }
+    }
+
+    setExtractedItems((prev) => prev.filter((_, idx) => idx !== index))
+    setPricingTraces((prev) => reindexTraces(prev, index))
+    setReplayIndices((prev) => reindexReplayIndices(prev, index))
+  }
+
   async function priceAll() {
     setStep('pricing')
     setReplayIndices(new Set())
 
-    const snapshot = extractedItems.map((item) => ({ ...item, priceStatus: 'queued' as const }))
+    let snapshot: ExtractedItem[] = extractedItems.map((item) => ({
+      ...item,
+      priceStatus: 'queued' as const,
+    }))
     setExtractedItems(snapshot)
 
+    if (claimId) {
+      try {
+        snapshot = await persistNewItemsToClaim(claimId, snapshot)
+        setExtractedItems(snapshot)
+      } catch (err) {
+        console.error('Failed to add items to claim before pricing:', err)
+      }
+    }
+
     await mapWithConcurrencyLimit(snapshot, PRICE_LOOKUP_CONCURRENCY, async (item, i) => {
+      const matchKey = item.claimItemId ?? `idx-${i}`
+
       setExtractedItems((prev) =>
-        prev.map((it, idx) => (idx === i ? { ...it, priceStatus: 'pending' } : it))
+        prev.map((it, idx) => {
+          const key = it.claimItemId ?? `idx-${idx}`
+          return key === matchKey ? { ...it, priceStatus: 'pending' } : it
+        })
       )
 
       try {
@@ -115,38 +193,73 @@ export function useItemExtraction() {
         setPricingTraces((prev) => ({ ...prev, [i]: outcome.trace }))
 
         if (outcome.price != null) {
-          setExtractedItems((prev) =>
-            prev.map((it, idx) =>
-              idx === i
-                ? {
-                    ...it,
-                    price: outcome.price,
-                    priceSources: outcome.sources ?? [],
-                    priceSource: outcome.source,
-                    priceTrace: outcome.trace,
-                    priceStatus: 'found',
-                  }
-                : it
+          const priced: Partial<ExtractedItem> = {
+            price: outcome.price,
+            priceSources: outcome.sources ?? [],
+            priceSource: outcome.source,
+            priceTrace: outcome.trace,
+            priceStatus: 'found',
+          }
+
+          if (claimId && item.claimItemId) {
+            try {
+              await patchClaimItem(claimId, item.claimItemId, {
+                price: outcome.price,
+                price_sources: outcome.sources ?? [],
+                estimated_age: item.estimatedAge ?? null,
+              })
+            } catch (err) {
+              console.error(err)
+            }
+          }
+
+          setExtractedItems((prev) => {
+            if (!prev.some((it) => (it.claimItemId ?? '') === (item.claimItemId ?? ''))) {
+              return prev
+            }
+            return prev.map((it) =>
+              it.claimItemId === item.claimItemId ? { ...it, ...priced } : it
             )
-          )
+          })
           setReplayIndices((prev) => new Set(prev).add(i))
         } else {
-          setExtractedItems((prev) =>
-            prev.map((it, idx) =>
-              idx === i
+          setExtractedItems((prev) => {
+            if (!prev.some((it) => it.claimItemId === item.claimItemId)) return prev
+            return prev.map((it) =>
+              it.claimItemId === item.claimItemId
                 ? { ...it, priceStatus: 'error', priceTrace: outcome.trace }
                 : it
             )
-          )
+          })
         }
       } catch {
-        setExtractedItems((prev) =>
-          prev.map((it, idx) => (idx === i ? { ...it, priceStatus: 'error' } : it))
-        )
+        setExtractedItems((prev) => {
+          if (!prev.some((it) => it.claimItemId === item.claimItemId)) return prev
+          return prev.map((it) =>
+            it.claimItemId === item.claimItemId ? { ...it, priceStatus: 'error' } : it
+          )
+        })
       }
     })
 
     setStep('done')
+  }
+
+  /** Persist any items not yet on the claim (e.g. saved without pricing). */
+  async function saveUnpricedItemsToClaim() {
+    if (!claimId) return
+    const unsaved = extractedItems.filter((item) => !item.claimItemId)
+    if (unsaved.length === 0) return
+
+    const { items: rows } = await postClaimItems(claimId, unsaved)
+    setExtractedItems((prev) => {
+      let rowIdx = 0
+      return prev.map((item) => {
+        if (item.claimItemId) return item
+        const row = rows[rowIdx++] as { id: string }
+        return { ...item, claimItemId: row.id }
+      })
+    })
   }
 
   const isPricingInProgress =
@@ -171,6 +284,8 @@ export function useItemExtraction() {
     stopRecording,
     extract,
     priceAll,
+    removeItem,
+    saveUnpricedItemsToClaim,
     isPricingInProgress,
   }
 }

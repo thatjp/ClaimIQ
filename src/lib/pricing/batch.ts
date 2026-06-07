@@ -1,4 +1,4 @@
-export const PRICE_LOOKUP_CONCURRENCY = 10
+export const PRICE_LOOKUP_CONCURRENCY = 3
 
 export async function mapWithConcurrencyLimit<T>(
   items: T[],

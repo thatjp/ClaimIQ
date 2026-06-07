@@ -3,8 +3,7 @@ export type PriceLayer =
   | 'vector_cache'
   | 'ebay'
   | 'amazon'
-  | 'web_search'
-  | 'estimated'
+  | 'manual'
 
 export type PriceTraceStepStatus = 'hit' | 'miss' | 'error' | 'running' | 'pending' | 'skipped'
 
@@ -17,12 +16,10 @@ export interface PriceTraceStep {
 }
 
 export const PRICE_LADDER: { layer: PriceLayer; label: string }[] = [
-  { layer: 'kv_cache', label: 'Exact cache' },
-  { layer: 'vector_cache', label: 'Similar items' },
-  { layer: 'ebay', label: 'eBay sold' },
-  { layer: 'amazon', label: 'Amazon' },
-  { layer: 'web_search', label: 'Web search' },
-  { layer: 'estimated', label: 'AI estimate' },
+  { layer: 'kv_cache',      label: 'Exact cache' },
+  { layer: 'vector_cache',  label: 'Similar items' },
+  { layer: 'ebay',          label: 'eBay sold' },
+  { layer: 'amazon',        label: 'Amazon' },
 ]
 
 export function traceStep(
@@ -41,80 +38,4 @@ export function markSkippedAfterHit(steps: PriceTraceStep[]): PriceTraceStep[] {
   return steps.map((step, i) =>
     i > hitIndex && step.status === 'pending' ? { ...step, status: 'skipped' as const } : step
   )
-}
-
-/** Merge sync-path trace with workflow trace into a full ladder. */
-export function mergePriceTrace(
-  syncTrace: PriceTraceStep[],
-  workflowTrace: PriceTraceStep[]
-): PriceTraceStep[] {
-  const byLayer = new Map<PriceLayer, PriceTraceStep>()
-  for (const step of [...syncTrace, ...workflowTrace]) {
-    byLayer.set(step.layer, step)
-  }
-
-  const merged = PRICE_LADDER.map(({ layer, label }) => {
-    const existing = byLayer.get(layer)
-    if (existing) return existing
-    return traceStep(layer, 'skipped')
-  })
-
-  return markSkippedAfterHit(merged)
-}
-
-/** Pending async steps shown while workflow runs. */
-export function pendingWorkflowTrace(syncTrace: PriceTraceStep[]): PriceTraceStep[] {
-  const syncLayers = new Set(syncTrace.map((s) => s.layer))
-  const asyncSteps: PriceTraceStep[] = [
-    traceStep('ebay', 'running'),
-    traceStep('amazon', 'pending'),
-    traceStep('web_search', 'pending'),
-    traceStep('estimated', 'pending'),
-  ]
-  return [...syncTrace, ...asyncSteps.filter((s) => !syncLayers.has(s.layer))]
-}
-
-const ASYNC_LAYERS: PriceLayer[] = ['ebay', 'amazon', 'web_search', 'estimated']
-
-/** Build ladder UI state while a workflow is in progress (completed steps + active running layer). */
-export function buildLivePriceTrace(
-  syncTrace: PriceTraceStep[],
-  workflowTrace: PriceTraceStep[],
-  activeLayer?: PriceLayer
-): PriceTraceStep[] {
-  const syncHit = syncTrace.find((s) => s.status === 'hit')
-  if (syncHit) return finalizeSyncHit(syncTrace, syncHit.layer)
-
-  const merged = mergePriceTrace(syncTrace, workflowTrace)
-
-  if (merged.some((s) => s.status === 'hit' && ASYNC_LAYERS.includes(s.layer))) {
-    return merged
-  }
-
-  if (!activeLayer) return merged
-
-  const activeIdx = ASYNC_LAYERS.indexOf(activeLayer)
-  return merged.map((step) => {
-    if (!ASYNC_LAYERS.includes(step.layer)) return step
-    if (step.status === 'hit' || step.status === 'miss' || step.status === 'error') return step
-    const idx = ASYNC_LAYERS.indexOf(step.layer)
-    if (step.layer === activeLayer) return traceStep(step.layer, 'running')
-    if (idx > activeIdx) return traceStep(step.layer, 'pending')
-    return step
-  })
-}
-
-export function finalizeSyncHit(
-  syncTrace: PriceTraceStep[],
-  hitLayer: PriceLayer
-): PriceTraceStep[] {
-  const merged = PRICE_LADDER.map(({ layer, label }) => {
-    const fromSync = syncTrace.find((s) => s.layer === layer)
-    if (fromSync) return fromSync
-    const hitIndex = PRICE_LADDER.findIndex((s) => s.layer === hitLayer)
-    const thisIndex = PRICE_LADDER.findIndex((s) => s.layer === layer)
-    if (thisIndex > hitIndex) return traceStep(layer, 'skipped')
-    return traceStep(layer, 'miss')
-  })
-  return merged
 }
