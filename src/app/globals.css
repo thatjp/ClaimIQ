@@ -99,3 +99,35 @@ input, textarea, select {
 .table-row-resize td {
   transition: padding 0.35s ease-out;
 }
+
+/* Row fade-in left to right on first render */
+@keyframes row-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.row-enter {
+  animation: row-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Price slide up + fade in when a price is found */
+@keyframes price-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.price-enter {
+  animation: price-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useRef, useState } from 'react'
+import { Suspense, useRef, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { US_STATES } from '@/lib/constants'
 import { useIntakeWorkflow } from '@/lib/hooks/useIntakeWorkflow'
@@ -16,6 +16,59 @@ function PriceStatusCell({ item }: { item: IntakeProgressItem }) {
   )
   if (item.priceStatus === 'found')   return <span className="text-green-600 text-xs">Found</span>
   return <span className="text-red-500 text-xs">Not found</span>
+}
+
+function ProcessingTable({ items }: { items: IntakeProgressItem[] }) {
+  const seenIds = useRef<Set<string>>(new Set())
+  const seenPrices = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    items.forEach((item) => {
+      seenIds.current.add(item.id)
+      if (item.price != null) seenPrices.current.add(item.id)
+    })
+  })
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-100 bg-gray-50">
+            <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Item</th>
+            <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+            <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Price</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {items.map((item, i) => {
+            const isNew = !seenIds.current.has(item.id)
+            const isNewPrice = item.price != null && !seenPrices.current.has(item.id)
+            return (
+              <tr
+                key={item.id}
+                className={isNew ? 'row-enter' : ''}
+                style={isNew ? { animationDelay: `${i * 40}ms` } : undefined}
+              >
+                <td className="px-4 py-2.5 font-medium text-gray-900">{item.name}</td>
+                <td className="px-4 py-2.5"><PriceStatusCell item={item} /></td>
+                <td className="px-4 py-2.5 text-right">
+                  {item.price != null
+                    ? <span
+                        key={`price-${item.id}-${item.price}`}
+                        className={`font-medium text-green-700${isNewPrice ? ' price-enter' : ''}`}
+                      >
+                        ${item.price.toLocaleString()}
+                      </span>
+                    : <span className="text-gray-300">—</span>
+                  }
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 function ProcessingView({
@@ -47,32 +100,8 @@ function ProcessingView({
         </span>
       </div>
 
-      {phase === 'pricing' && items.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Item</th>
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Price</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-2.5 font-medium text-gray-900">{item.name}</td>
-                  <td className="px-4 py-2.5"><PriceStatusCell item={item} /></td>
-                  <td className="px-4 py-2.5 text-right">
-                    {item.price != null
-                      ? <span className="font-medium text-green-700">${item.price.toLocaleString()}</span>
-                      : <span className="text-gray-300">—</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {(phase === 'pricing' || phase === 'done') && items.length > 0 && (
+        <ProcessingTable items={items} />
       )}
 
       <button

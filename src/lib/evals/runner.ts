@@ -1,19 +1,16 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { resolve } from 'path'
-import { generateObject } from 'ai'
-import { z } from 'zod'
 import { extractItems } from '@/lib/ai/extraction'
-import { MODELS, gatewayProviderOptions } from '@/lib/ai/models'
 import extractionFixtures from '@/lib/evals/fixtures/extraction.json'
-import pricingFixtures from '@/lib/evals/fixtures/pricing-estimate.json'
+import pricingFixtures from '@/lib/evals/fixtures/pricing-parse.json'
 import { scoreExtraction, summarizeExtraction } from '@/lib/evals/scorers/extraction'
-import { scorePricingEstimate, summarizePricing } from '@/lib/evals/scorers/pricing'
+import { scorePricingParse, summarizePricing } from '@/lib/evals/scorers/pricing'
 import type {
   EvalRunReport,
   ExtractionEvalResult,
   ExtractionFixture,
-  PricingEstimateFixture,
-  PricingEvalResult,
+  PricingParseFixture,
+  PricingParseResult,
   RunEvalsOptions,
 } from '@/lib/evals/types'
 
@@ -72,51 +69,28 @@ async function runExtractionEvals(
   return results
 }
 
-async function runPricingEvals(
-  fixtures: PricingEstimateFixture[],
+// Pricing evals are pure parse tests — no network, no tokens.
+function runPricingEvals(
+  fixtures: PricingParseFixture[],
   onProgress?: RunEvalsOptions['onProgress']
-): Promise<PricingEvalResult[]> {
-  const results: PricingEvalResult[] = []
-
-  for (let i = 0; i < fixtures.length; i++) {
-    if (i > 0) await delay(DELAY_MS)
-    const fixture = fixtures[i]
+): PricingParseResult[] {
+  return fixtures.map((fixture, i) => {
     onProgress?.({ phase: 'pricing', current: i + 1, total: fixtures.length, fixtureId: fixture.id })
-
     const t0 = performance.now()
-    try {
-      const { object } = await generateObject({
-        model: MODELS.priceNorm,
-        providerOptions: gatewayProviderOptions,
-        schema: z.object({ price: z.number() }),
-        prompt: `Estimate the current retail replacement cost in USD for: ${fixture.item.name} (${fixture.item.brand ?? 'unknown brand'}, ${fixture.item.condition} condition). Be conservative.`,
-      })
-      const price = object.price
-      results.push(scorePricingEstimate(fixture, price, Math.round(performance.now() - t0)))
-    } catch (err) {
-      results.push(
-        scorePricingEstimate(
-          fixture,
-          null,
-          Math.round(performance.now() - t0),
-          err instanceof Error ? err.message : String(err)
-        )
-      )
-    }
-  }
-
-  return results
+    return scorePricingParse(fixture, Math.round(performance.now() - t0))
+  })
 }
 
 export async function runEvals(options: RunEvalsOptions = {}): Promise<EvalRunReport> {
-  if (!process.env.AI_GATEWAY_API_KEY) {
-    throw new Error('AI_GATEWAY_API_KEY is required')
-  }
-
   const { extractionOnly, pricingOnly, onProgress } = options
 
+  // Extraction requires the AI gateway; pricing parse does not.
+  if (!pricingOnly && !process.env.AI_GATEWAY_API_KEY) {
+    throw new Error('AI_GATEWAY_API_KEY is required for extraction evals')
+  }
+
   let extractionResults: ExtractionEvalResult[] = []
-  let pricingResults: PricingEvalResult[] = []
+  let pricingResults: PricingParseResult[] = []
 
   if (!pricingOnly) {
     extractionResults = await runExtractionEvals(
@@ -126,8 +100,8 @@ export async function runEvals(options: RunEvalsOptions = {}): Promise<EvalRunRe
   }
 
   if (!extractionOnly) {
-    pricingResults = await runPricingEvals(
-      pricingFixtures as PricingEstimateFixture[],
+    pricingResults = runPricingEvals(
+      pricingFixtures as PricingParseFixture[],
       onProgress
     )
   }

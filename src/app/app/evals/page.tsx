@@ -213,16 +213,16 @@ export default function EvalsPage() {
           {report.pricing.total > 0 && (
             <section className="space-y-3">
               <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                Pricing estimate ({report.pricing.total} cases)
+                Pricing parser ({report.pricing.total} cases)
               </h2>
               {report.pricing.results.map((r) => (
                 <EvalResultRow
                   key={r.id}
-                  id={r.id}
+                  id={`[${r.source}] ${r.id}`}
                   status={r.status}
                   summary={
                     r.price != null
-                      ? `$${r.price.toLocaleString()} (expected $${r.acceptableRange[0]}–$${r.acceptableRange[1]})`
+                      ? `$${r.price.toLocaleString()} — ${r.sourceCount ?? 0} source${r.sourceCount === 1 ? '' : 's'}`
                       : 'No price returned'
                   }
                   failures={r.failures}

@@ -1,5 +1,7 @@
 export type EvalStatus = 'pass' | 'partial' | 'fail' | 'error'
 
+// ── Extraction ────────────────────────────────────────────────────────────────
+
 export interface MustIncludeRule {
   nameContains: string
   category?: string
@@ -28,29 +30,35 @@ export interface ExtractionEvalResult {
   durationMs: number
 }
 
-export interface PricingEstimateFixture {
+// ── Pricing parse (no LLM — tests eBay + SerpAPI response parsing) ────────────
+
+export interface PricingParseFixture {
   id: string
-  item: {
-    name: string
-    brand?: string
-    model?: string
-    condition: string
-    estimatedAge?: number
-    category?: string
+  source: 'ebay' | 'serp'
+  description: string
+  input: unknown
+  expected: {
+    hit: boolean
+    price?: number | null
+    sourceCount?: number
+    notes?: string
   }
-  acceptableRange: [number, number]
   notes?: string
 }
 
-export interface PricingEvalResult {
+export interface PricingParseResult {
   id: string
+  source: 'ebay' | 'serp'
   status: EvalStatus
   price: number | null
-  acceptableRange: [number, number]
+  sourceCount: number | null
+  expected: PricingParseFixture['expected']
   failures: string[]
   notes?: string
   durationMs: number
 }
+
+// ── Report ────────────────────────────────────────────────────────────────────
 
 export interface EvalRunReport {
   runAt: string
@@ -71,7 +79,7 @@ export interface EvalRunReport {
     failed: number
     errors: number
     passRate: number
-    results: PricingEvalResult[]
+    results: PricingParseResult[]
   }
 }
 

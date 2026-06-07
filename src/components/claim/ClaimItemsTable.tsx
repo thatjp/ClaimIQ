@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { ClaimItem } from '@/types/items'
 import type { PricingState } from '@/lib/hooks/useClaimPricing'
 import { canApproveItem } from '@/lib/claims/grounding'
@@ -134,6 +134,35 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice, onManualP
   const someApproved = approvableItems.some((i) => i.approved)
   const indeterminate = someApproved && !allApproved
 
+  // Track which item IDs have been rendered before (for row-enter animation)
+  const seenIds = useRef<Set<string>>(new Set())
+  // Track which item IDs already had a price (for price-enter animation)
+  const seenPrices = useRef<Set<string>>(new Set())
+
+  // Snapshot current state into refs after each render
+  useEffect(() => {
+    items.forEach((item) => {
+      seenIds.current.add(item.id)
+      if (item.price != null) seenPrices.current.add(item.id)
+    })
+  })
+
+  function rowClass(item: ClaimItem) {
+    const isNew = !seenIds.current.has(item.id)
+    const base = item.flagged ? 'bg-red-50' : item.approved ? 'bg-green-50' : 'hover:bg-gray-50'
+    return isNew ? `${base} row-enter` : base
+  }
+
+  function priceKey(item: ClaimItem) {
+    // Changing the key forces remount → re-runs the animation
+    return item.price != null ? `price-${item.id}-${item.price}` : `no-price-${item.id}`
+  }
+
+  function priceClass(item: ClaimItem) {
+    const isNewPrice = item.price != null && !seenPrices.current.has(item.id)
+    return isNewPrice ? 'price-enter' : ''
+  }
+
   async function handleSelectAll(checked: boolean) {
     await Promise.allSettled(
       approvableItems
@@ -165,7 +194,7 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice, onManualP
               const pricing = active?.id === item.id
               const approvable = canApproveItem(item)
               return (
-                <div key={item.id} className={`px-4 py-3 ${item.flagged ? 'bg-red-50' : item.approved ? 'bg-green-50' : ''}`}>
+                <div key={item.id} className={`px-4 py-3 row-enter ${item.flagged ? 'bg-red-50' : item.approved ? 'bg-green-50' : ''}`}>
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
@@ -200,7 +229,9 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice, onManualP
                         </div>
                         <div className="flex flex-col items-end gap-2 shrink-0">
                           {item.price ? (
-                            <span className="font-semibold text-gray-900 text-sm">${item.price.toLocaleString()}</span>
+                            <span key={priceKey(item)} className={`font-semibold text-gray-900 text-sm ${priceClass(item)}`}>
+                              ${item.price.toLocaleString()}
+                            </span>
                           ) : (
                             <span className="text-gray-400 text-xs">{pricing ? active.strategy + '...' : 'Pending'}</span>
                           )}
@@ -250,11 +281,7 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice, onManualP
                   return (
                     <tr
                       key={item.id}
-                      className={
-                        item.flagged ? 'bg-red-50' :
-                        item.approved ? 'bg-green-50' :
-                        'hover:bg-gray-50'
-                      }
+                      className={rowClass(item)}
                     >
                       <td className="px-4 py-3 text-center">
                         <input
@@ -279,7 +306,7 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice, onManualP
                       <td className="px-4 py-3 text-gray-700">{item.quantity}</td>
                       <td className="px-4 py-3">
                         {item.price ? (
-                          <div>
+                          <div key={priceKey(item)} className={priceClass(item)}>
                             <span className="font-medium text-gray-900">${item.price.toLocaleString()}</span>
                             {item.priceSource && <PriceSourceBadge source={item.priceSource} />}
                             <SourceLinks sources={item.price_sources} />

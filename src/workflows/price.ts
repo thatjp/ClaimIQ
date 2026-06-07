@@ -89,6 +89,51 @@ async function lookupEbay(item: ClaimItemInput): Promise<StepOutcome<{ price: nu
 }
 
 
+// Category → preferred retail sites for insurance replacement comps.
+// 'other' has no site filter — falls back to broad Google Shopping.
+const CATEGORY_SITES: Record<string, string[]> = {
+  electronics: ['bestbuy.com', 'amazon.com'],
+  appliances:  ['homedepot.com', 'lowes.com'],
+  furniture:   ['wayfair.com', 'target.com'],
+  clothing:    ['macys.com', 'target.com'],
+  jewelry:     ['jared.com', 'zales.com'],
+  tools:       ['homedepot.com', 'lowes.com'],
+}
+
+type SerpResult = { price?: string; extracted_price?: number; link?: string; product_link?: string }
+
+function parseSerpResults(results: SerpResult[]): { price: number; sources: string[] } | null {
+  const priced = results.filter((r) => r.extracted_price != null || r.price)
+  if (!priced.length) return null
+
+  const prices = priced
+    .map((r) => r.extracted_price ?? parseFloat(r.price!.replace(/[^0-9.]/g, '')))
+    .filter((p) => !isNaN(p) && p > 0)
+  if (!prices.length) return null
+
+  const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const sources = priced.map((r) => r.product_link ?? r.link).filter((u): u is string => !!u).slice(0, 3)
+  return { price: avg, sources }
+}
+
+async function fetchSerpPage(
+  apiKey: string,
+  query: string,
+  siteFilter?: string
+): Promise<SerpResult[]> {
+  const q = siteFilter ? `${query} site:${siteFilter}` : query
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    engine: 'google_shopping',
+    q,
+    num: '5',
+  })
+  const res = await fetch(`https://serpapi.com/search?${params}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.shopping_results ?? []) as SerpResult[]
+}
+
 async function lookupSerp(item: ClaimItemInput): Promise<StepOutcome<{ price: number; sources: string[] }>> {
   'use step'
 
@@ -98,49 +143,48 @@ async function lookupSerp(item: ClaimItemInput): Promise<StepOutcome<{ price: nu
     return { value: null, durationMs: stepElapsed(t0), detail: 'SERP_API_KEY not configured' }
   }
 
+  const apiKey = process.env.SERP_API_KEY
   const query = [item.name, item.brand, item.model].filter(Boolean).join(' ')
+  const sites = CATEGORY_SITES[item.category ?? 'other']
 
   try {
-    const params = new URLSearchParams({
-      api_key: process.env.SERP_API_KEY,
-      engine: 'google_shopping',
-      q: query,
-      num: '5',
-    })
-
-    const res = await fetch(`https://serpapi.com/search?${params}`)
-    if (!res.ok) {
+    if (!sites) {
+      // 'other' — single broad Google Shopping search
+      const results = await fetchSerpPage(apiKey, query)
+      const parsed = parseSerpResults(results)
       const durationMs = stepElapsed(t0)
-      log('serp', false, durationMs, { status: res.status, item: item.name })
-      return { value: null, durationMs, detail: `HTTP ${res.status}` }
+      log('serp', !!parsed, durationMs, { item: item.name, strategy: 'broad', resultCount: results.length })
+      return parsed
+        ? { value: parsed, durationMs, detail: `${parsed.sources.length} broad listings` }
+        : { value: null, durationMs, detail: 'no results (broad)' }
     }
 
-    const data = await res.json()
-    const results: { price?: string; extracted_price?: number; link?: string; product_link?: string }[] =
-      data.shopping_results ?? []
+    // Category-specific: run site-filtered search + broad Google Shopping in parallel.
+    // Use the site-filtered result if it has a price; fall back to broad; average both if both hit.
+    const [siteResults, broadResults] = await Promise.all([
+      fetchSerpPage(apiKey, query, sites[0]),
+      fetchSerpPage(apiKey, query),
+    ])
 
-    if (!results.length) {
-      const durationMs = stepElapsed(t0)
-      log('serp', false, durationMs, { reason: 'no_results', item: item.name })
-      return { value: null, durationMs, detail: 'no shopping results' }
+    const siteParsed  = parseSerpResults(siteResults)
+    const broadParsed = parseSerpResults(broadResults)
+    const durationMs  = stepElapsed(t0)
+
+    if (siteParsed && broadParsed) {
+      // Average the two for a more defensible comp
+      const avg = Math.round((siteParsed.price + broadParsed.price) / 2)
+      const sources = [...new Set([...siteParsed.sources, ...broadParsed.sources])].slice(0, 3)
+      log('serp', true, durationMs, { item: item.name, strategy: 'averaged', site: sites[0], sitePrice: siteParsed.price, broadPrice: broadParsed.price, avg })
+      return { value: { price: avg, sources }, durationMs, detail: `${sites[0]} + broad avg` }
     }
 
-    const priced = results.filter((r) => r.extracted_price != null || r.price)
-    if (!priced.length) {
-      return { value: null, durationMs: stepElapsed(t0), detail: 'no prices in results' }
-    }
+    const winner = siteParsed ?? broadParsed
+    const strategy = siteParsed ? sites[0] : 'broad'
+    log('serp', !!winner, durationMs, { item: item.name, strategy, resultCount: (siteResults.length + broadResults.length) })
 
-    const prices = priced.map((r) => r.extracted_price ?? parseFloat(r.price!.replace(/[^0-9.]/g, ''))).filter((p) => !isNaN(p) && p > 0)
-    if (!prices.length) {
-      return { value: null, durationMs: stepElapsed(t0), detail: 'could not parse prices' }
-    }
-
-    const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
-    const sources = priced.map((r) => r.product_link ?? r.link).filter((u): u is string => !!u).slice(0, 3)
-    const durationMs = stepElapsed(t0)
-
-    log('serp', true, durationMs, { item: item.name, resultCount: priced.length, avg })
-    return { value: { price: avg, sources }, durationMs, detail: `${priced.length} listings` }
+    return winner
+      ? { value: winner, durationMs, detail: `${winner.sources.length} listings (${strategy})` }
+      : { value: null, durationMs, detail: `no results (${sites[0]} + broad)` }
   } catch (err) {
     const durationMs = stepElapsed(t0)
     log('serp', false, durationMs, { error: err instanceof Error ? err.message : String(err) })
