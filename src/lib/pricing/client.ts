@@ -15,6 +15,7 @@ export interface PriceLookupOutcome {
   sources?: string[]
   source?: ClaimItem['priceSource']
   stale?: boolean
+  notFound?: boolean
   trace: PriceTraceStep[]
   error?: boolean
 }
@@ -71,6 +72,9 @@ async function pollWorkflow(
       }
 
       if (data.status === 'completed') {
+        if (data.source === 'not_found') {
+          return { notFound: true, trace }
+        }
         return {
           price: data.price as number,
           sources: data.sources as string[],

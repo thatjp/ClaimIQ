@@ -104,7 +104,7 @@ async function lookupAmazon(item: ClaimItemInput): Promise<StepOutcome<{ price: 
 
   const t0 = performance.now()
   try {
-    const { experimental_output } = await generateText({
+    const { experimental_output, usage } = await generateText({
       model: MODELS.priceSearch,
       experimental_output: Output.object({ schema }),
       tools: { webSearch: anthropic.tools.webSearch_20260209({ maxUses: 4 }) },
@@ -127,7 +127,12 @@ Do NOT estimate — only return a price you found on Amazon.`,
     const sources = (experimental_output?.sources ?? []).filter((url) => url.includes('amazon.com'))
     const hit = !!experimental_output?.price && sources.length > 0
 
-    log('amazon', hit, durationMs, { item: item.name, price: experimental_output?.price })
+    log('amazon', hit, durationMs, {
+      item: item.name,
+      price: experimental_output?.price,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+    })
 
     if (!hit) {
       return {
@@ -209,5 +214,5 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
   workflowTrace.push(traceStep('amazon', 'miss', amazon.durationMs, amazon.detail))
   await publishLiveTrace(traceKey, workflowTrace)
 
-  return { price: null, sources: [], source: null, trace: workflowTrace }
+  return { price: null, sources: [], source: 'not_found' as const, trace: workflowTrace }
 }

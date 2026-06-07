@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { PriceTraceStep, PriceTraceStepStatus } from '@/lib/pricing/trace'
 
 const STATUS_STYLES: Record<PriceTraceStepStatus, string> = {
-  hit: 'bg-green-100 text-green-800 border-green-200',
-  miss: 'bg-gray-50 text-gray-500 border-gray-200',
-  error: 'bg-red-50 text-red-700 border-red-200',
-  running: 'bg-blue-100 text-blue-800 border-blue-300 animate-pulse',
+  hit:     'bg-green-100 text-green-800 border-green-200',
+  miss:    'bg-gray-50 text-gray-500 border-gray-200',
+  error:   'bg-red-50 text-red-700 border-red-200',
+  running: 'trace-step-running border',
   pending: 'bg-gray-50 text-gray-400 border-gray-100',
   skipped: 'bg-gray-50 text-gray-300 border-gray-100 line-through',
 }
@@ -28,16 +28,10 @@ interface Props {
   compact?: boolean
 }
 
-function TraceStepBadge({
-  step,
-  animate,
-}: {
-  step: PriceTraceStep
-  animate: boolean
-}) {
+function TraceStepBadge({ step }: { step: PriceTraceStep }) {
   return (
     <span
-      className={`trace-step-badge inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-medium ${STATUS_STYLES[step.status]} ${animate ? 'trace-step-enter' : ''}`}
+      className={`trace-step-badge inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-medium ${STATUS_STYLES[step.status]}`}
       title={step.detail}
     >
       <span aria-hidden>{STATUS_ICON[step.status]}</span>
@@ -101,16 +95,12 @@ export function PriceLookupTrace({ trace, replay = false, compact = false }: Pro
             aria-label="Price lookup steps"
           >
             {visible.map((step, index) => (
-              <span key={step.layer} className="inline-flex items-center gap-0.5">
-                {index > 0 && (
-                  <span className={`text-gray-300 mx-0.5${replay ? ' trace-step-enter' : ''}`}>
-                    →
-                  </span>
-                )}
-                <TraceStepBadge
-                  step={step}
-                  animate={replay || enterLayers.has(step.layer)}
-                />
+              <span
+                key={step.layer}
+                className={`inline-flex items-center gap-0.5 ${replay || enterLayers.has(step.layer) ? 'trace-step-enter' : ''}`}
+              >
+                {index > 0 && <span className="text-gray-300 mx-0.5">→</span>}
+                <TraceStepBadge step={step} />
               </span>
             ))}
             {replay && visibleCount < trace.length && (

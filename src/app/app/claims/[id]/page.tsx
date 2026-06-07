@@ -28,7 +28,7 @@ export default function ClaimWorkspacePage() {
   const [claim, setClaim] = useState<Claim | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const { pricingState, refreshPrice } = useClaimPricing(
+  const { pricingState, notFoundIds, refreshPrice } = useClaimPricing(
     (updater) => setClaim((prev) => (prev ? { ...prev, items: updater(prev.items) } : prev))
   )
 
@@ -82,6 +82,7 @@ export default function ClaimWorkspacePage() {
         <ClaimItemsTable
           items={claim.items}
           pricingState={pricingState}
+          notFoundIds={notFoundIds}
           onRefreshPrice={(item: ClaimItem) => refreshPrice(item)}
           onManualPrice={handleManualPrice}
         />

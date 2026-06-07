@@ -34,7 +34,7 @@ input, textarea, select {
 @keyframes trace-fade-in {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.96);
+    transform: translateY(6px) scale(0.94);
   }
   to {
     opacity: 1;
@@ -42,15 +42,39 @@ input, textarea, select {
   }
 }
 
-.trace-step-enter {
-  animation: trace-fade-in 0.35s ease-out both;
+@keyframes trace-border-pulse {
+  0%, 100% {
+    border-color: #86efac;
+    box-shadow: 0 0 0 0 rgba(134, 239, 172, 0);
+  }
+  50% {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 3px rgba(134, 239, 172, 0.35);
+  }
 }
+
+.trace-step-enter {
+  animation: trace-fade-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.trace-step-enter:nth-child(1) { animation-delay: 0ms; }
+.trace-step-enter:nth-child(2) { animation-delay: 60ms; }
+.trace-step-enter:nth-child(3) { animation-delay: 120ms; }
+.trace-step-enter:nth-child(4) { animation-delay: 180ms; }
+.trace-step-enter:nth-child(5) { animation-delay: 240ms; }
 
 .trace-step-badge {
   transition:
-    background-color 0.3s ease,
-    border-color 0.3s ease,
-    color 0.3s ease;
+    background-color 0.4s ease,
+    border-color 0.4s ease,
+    color 0.4s ease,
+    box-shadow 0.4s ease;
+}
+
+.trace-step-running {
+  background-color: #f0fdf4;
+  color: #15803d;
+  animation: trace-border-pulse 1.6s ease-in-out infinite;
 }
 
 .trace-expand {

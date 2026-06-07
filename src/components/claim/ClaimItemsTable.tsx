@@ -85,11 +85,12 @@ function ManualPriceInput({
 interface Props {
   items: ClaimItem[]
   pricingState: PricingState | null
+  notFoundIds: Set<string>
   onRefreshPrice: (item: ClaimItem) => void
   onManualPrice: (item: ClaimItem, price: number) => Promise<void>
 }
 
-export function ClaimItemsTable({ items, pricingState, onRefreshPrice, onManualPrice }: Props) {
+export function ClaimItemsTable({ items, pricingState, notFoundIds, onRefreshPrice, onManualPrice }: Props) {
   const total = items.reduce((sum, i) => sum + (i.price || 0) * i.quantity, 0)
   const active = pricingState
 
@@ -133,6 +134,9 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice, onManualP
                           {item.priceSource && <PriceSourceBadge source={item.priceSource} />}
                           <SourceLinks sources={item.price_sources} />
                         </div>
+                      )}
+                      {notFoundIds.has(item.id) && (
+                        <p className="text-xs text-amber-600 mt-1">Not found on eBay or Amazon — enter price manually</p>
                       )}
                       <ManualPriceInput item={item} onSave={onManualPrice} />
                     </div>
@@ -201,6 +205,9 @@ export function ClaimItemsTable({ items, pricingState, onRefreshPrice, onManualP
                       </td>
                       <td className="px-4 py-3"><SourceLinks sources={item.price_sources} /></td>
                       <td className="px-4 py-3">
+                        {notFoundIds.has(item.id) && (
+                          <p className="text-xs text-amber-600 mb-1">Not found — enter manually</p>
+                        )}
                         <ManualPriceInput item={item} onSave={onManualPrice} />
                       </td>
                       <td className="px-4 py-3">
