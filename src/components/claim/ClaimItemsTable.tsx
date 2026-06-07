@@ -21,14 +21,12 @@ function SourceLinks({ sources }: { sources?: string[] | null }) {
 
 function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
   const config: Record<string, { label: string; className: string; title: string; icon: string }> = {
-    cache:        { label: 'KV Cache',     className: 'text-blue-600',   icon: '⚡', title: 'Exact match from Redis cache (7-day TTL)' },
-    vector_cache: { label: 'Vector Cache', className: 'text-purple-600', icon: '🔮', title: 'Semantic match from pgvector (90-day TTL)' },
-    vector_cache_stale: { label: 'Stale Cache', className: 'text-orange-500', icon: '⏳', title: 'Semantic match older than 90 days — may not reflect current market price' },
-    ebay:         { label: 'eBay Sold',    className: 'text-yellow-600', icon: '🛒', title: 'Average of recent sold listings via eBay Finding API' },
-    amazon:       { label: 'Amazon',       className: 'text-orange-600', icon: '📦', title: 'Retrieved via Amazon product search' },
-    walmart:      { label: 'Walmart',      className: 'text-blue-700',   icon: '🛍️', title: 'Retrieved via Walmart product search' },
-    bestbuy:      { label: 'Best Buy',     className: 'text-blue-500',   icon: '🔵', title: 'Retrieved via Best Buy product search' },
-    manual:       { label: 'Manual Entry', className: 'text-gray-500',   icon: '✏️', title: 'Price entered manually by adjuster' },
+    kv_cache:           { label: 'KV Cache',     className: 'text-blue-600',   icon: '⚡', title: 'Exact match from Redis cache (7-day TTL)' },
+    vector_cache:       { label: 'Vector Cache', className: 'text-purple-600', icon: '🔮', title: 'Semantic match from pgvector (90-day TTL)' },
+    vector_cache_stale: { label: 'Stale Cache',  className: 'text-orange-500', icon: '⏳', title: 'Semantic match older than 90 days — may not reflect current market price' },
+    ebay:               { label: 'eBay Sold',        className: 'text-yellow-600', icon: '🛒', title: 'Average of recent sold listings via eBay Finding API' },
+    serp:               { label: 'Google Shopping', className: 'text-green-600',  icon: '🔍', title: 'Retrieved via Google Shopping (SerpAPI)' },
+    manual:             { label: 'Manual Entry',    className: 'text-gray-500',   icon: '✏️', title: 'Price entered manually by adjuster' },
   }
   const c = config[source!]
   if (!c) return null
@@ -39,47 +37,88 @@ function PriceSourceBadge({ source }: { source: ClaimItem['priceSource'] }) {
   )
 }
 
+function buildSearchLinks(item: ClaimItem) {
+  const q = encodeURIComponent([item.name, item.brand, item.model].filter(Boolean).join(' '))
+  return [
+    { label: 'Google', url: `https://www.google.com/search?q=${q}+replacement+cost` },
+    { label: 'Amazon', url: `https://www.amazon.com/s?k=${q}` },
+    { label: 'eBay',   url: `https://www.ebay.com/sch/i.html?_nkw=${q}` },
+    { label: 'Walmart', url: `https://www.walmart.com/search?q=${q}` },
+  ]
+}
+
 function ManualPriceInput({
   item,
   onSave,
 }: {
   item: ClaimItem
-  onSave: (item: ClaimItem, price: number) => Promise<void>
+  onSave: (item: ClaimItem, price: number, sourceUrl?: string) => Promise<void>
 }) {
-  const [value, setValue] = useState(item.price ? String(item.price) : '')
+  const [price, setPrice] = useState(item.price ? String(item.price) : '')
+  const [url, setUrl] = useState('')
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
-    const parsed = parseFloat(value)
+    const parsed = parseFloat(price)
     if (isNaN(parsed) || parsed <= 0) return
     setSaving(true)
     try {
-      await onSave(item, parsed)
+      await onSave(item, parsed, url.trim() || undefined)
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="flex items-center gap-1 mt-1">
-      <span className="text-xs text-gray-400">$</span>
+    <div className="space-y-1 mt-1">
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-gray-400">$</span>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+          placeholder="Enter price"
+          className="w-24 text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+        />
+        <button
+          onClick={handleSave}
+          disabled={saving || !price}
+          className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-40"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
       <input
-        type="number"
-        min="0"
-        step="0.01"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-        placeholder="Enter price"
-        className="w-24 text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+        type="url"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="Paste source URL (optional)"
+        className="w-full text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
       />
-      <button
-        onClick={handleSave}
-        disabled={saving || !value}
-        className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-40"
-      >
-        {saving ? 'Saving…' : 'Save'}
-      </button>
+    </div>
+  )
+}
+
+function SearchLinks({ item }: { item: ClaimItem }) {
+  return (
+    <div className="mt-1.5">
+      <p className="text-xs text-amber-700 font-medium mb-1">Not found on eBay — search manually:</p>
+      <div className="flex flex-wrap gap-1.5">
+        {buildSearchLinks(item).map(({ label, url }) => (
+          <a
+            key={label}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs px-2 py-0.5 rounded border border-gray-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 transition-colors"
+          >
+            {label} ↗
+          </a>
+        ))}
+      </div>
     </div>
   )
 }
@@ -89,7 +128,7 @@ interface Props {
   pricingState: PricingState | null
   notFoundIds: Set<string>
   onRefreshPrice: (item: ClaimItem) => void
-  onManualPrice: (item: ClaimItem, price: number) => Promise<void>
+  onManualPrice: (item: ClaimItem, price: number, sourceUrl?: string) => Promise<void>
 }
 
 export function ClaimItemsTable({ items, pricingState, notFoundIds, onRefreshPrice, onManualPrice }: Props) {
@@ -136,10 +175,8 @@ export function ClaimItemsTable({ items, pricingState, notFoundIds, onRefreshPri
                           <SourceLinks sources={item.price_sources} />
                         </div>
                       )}
-                      {notFoundIds.has(item.id) && (
-                        <p className="text-xs text-amber-600 mt-1">Not found on eBay or Amazon — enter price manually</p>
-                      )}
-                      <ManualPriceInput item={item} onSave={onManualPrice} />
+                      {!item.price && <SearchLinks item={item} />}
+                      {!item.price && <ManualPriceInput item={item} onSave={onManualPrice} />}
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       {item.price ? (
@@ -204,10 +241,8 @@ export function ClaimItemsTable({ items, pricingState, notFoundIds, onRefreshPri
                       </td>
                       <td className="px-4 py-3"><SourceLinks sources={item.price_sources} /></td>
                       <td className="px-4 py-3">
-                        {notFoundIds.has(item.id) && (
-                          <p className="text-xs text-amber-600 mb-1">Not found — enter manually</p>
-                        )}
-                        <ManualPriceInput item={item} onSave={onManualPrice} />
+                        {!item.price && <SearchLinks item={item} />}
+                        {!item.price && <ManualPriceInput item={item} onSave={onManualPrice} />}
                       </td>
                       <td className="px-4 py-3">
                         {item.flagged

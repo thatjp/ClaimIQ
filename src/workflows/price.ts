@@ -1,9 +1,6 @@
-import { generateText, Output, stepCountIs } from 'ai'
-import { z } from 'zod'
 import { kv } from '@/lib/kv'
 import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
-import { MODELS, anthropic } from '@/lib/ai/models'
 import { traceStep, type PriceTraceStep } from '@/lib/pricing/trace'
 import { updateLiveTrace } from '@/lib/pricing/live-trace'
 import type { ClaimItemInput } from '@/lib/workflow'
@@ -91,169 +88,62 @@ async function lookupEbay(item: ClaimItemInput): Promise<StepOutcome<{ price: nu
   }
 }
 
-async function lookupAmazon(item: ClaimItemInput): Promise<StepOutcome<{ price: number; sources: string[] }>> {
+
+async function lookupSerp(item: ClaimItemInput): Promise<StepOutcome<{ price: number; sources: string[] }>> {
   'use step'
 
-  const schema = z.object({
-    price: z.number().describe('Current retail replacement cost in USD on Amazon'),
-    sources: z
-      .array(z.string().url())
-      .min(1)
-      .describe('Amazon product listing URLs (amazon.com) where this item can be purchased'),
-  })
-
   const t0 = performance.now()
+
+  if (!process.env.SERP_API_KEY) {
+    return { value: null, durationMs: stepElapsed(t0), detail: 'SERP_API_KEY not configured' }
+  }
+
+  const query = [item.name, item.brand, item.model].filter(Boolean).join(' ')
+
   try {
-    const { experimental_output, usage } = await generateText({
-      model: MODELS.priceSearch,
-      experimental_output: Output.object({ schema }),
-      tools: { webSearch: anthropic.tools.webSearch_20260209({ maxUses: 4 }) },
-      stopWhen: stepCountIs(4),
-      prompt: `You are an insurance pricing assistant. Search Amazon (amazon.com) for the current retail replacement cost of this item.
-
-Item: ${item.name}
-Brand: ${item.brand || 'unknown'}
-Model: ${item.model || 'unknown'}
-Condition: ${item.condition}
-Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
-Category: ${item.category || 'unknown'}
-
-Search ONLY on amazon.com — find the closest matching new or like-new retail listing.
-Return the price in USD and at least one amazon.com product URL from your search results.
-Do NOT estimate — only return a price you found on Amazon.`,
+    const params = new URLSearchParams({
+      api_key: process.env.SERP_API_KEY,
+      engine: 'google_shopping',
+      q: query,
+      num: '5',
     })
 
-    const durationMs = stepElapsed(t0)
-    const sources = (experimental_output?.sources ?? []).filter((url) => url.includes('amazon.com'))
-    const hit = !!experimental_output?.price && sources.length > 0
-
-    log('amazon', hit, durationMs, {
-      item: item.name,
-      price: experimental_output?.price,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-    })
-
-    if (!hit) {
-      return {
-        value: null,
-        durationMs,
-        detail: sources.length ? 'no price on Amazon' : 'no Amazon listings',
-      }
+    const res = await fetch(`https://serpapi.com/search?${params}`)
+    if (!res.ok) {
+      const durationMs = stepElapsed(t0)
+      log('serp', false, durationMs, { status: res.status, item: item.name })
+      return { value: null, durationMs, detail: `HTTP ${res.status}` }
     }
 
-    return {
-      value: { price: experimental_output!.price, sources },
-      durationMs,
-      detail: `${sources.length} listing${sources.length === 1 ? '' : 's'}`,
+    const data = await res.json()
+    const results: { price?: string; extracted_price?: number; link?: string; product_link?: string }[] =
+      data.shopping_results ?? []
+
+    if (!results.length) {
+      const durationMs = stepElapsed(t0)
+      log('serp', false, durationMs, { reason: 'no_results', item: item.name })
+      return { value: null, durationMs, detail: 'no shopping results' }
     }
+
+    const priced = results.filter((r) => r.extracted_price != null || r.price)
+    if (!priced.length) {
+      return { value: null, durationMs: stepElapsed(t0), detail: 'no prices in results' }
+    }
+
+    const prices = priced.map((r) => r.extracted_price ?? parseFloat(r.price!.replace(/[^0-9.]/g, ''))).filter((p) => !isNaN(p) && p > 0)
+    if (!prices.length) {
+      return { value: null, durationMs: stepElapsed(t0), detail: 'could not parse prices' }
+    }
+
+    const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+    const sources = priced.map((r) => r.product_link ?? r.link).filter((u): u is string => !!u).slice(0, 3)
+    const durationMs = stepElapsed(t0)
+
+    log('serp', true, durationMs, { item: item.name, resultCount: priced.length, avg })
+    return { value: { price: avg, sources }, durationMs, detail: `${priced.length} listings` }
   } catch (err) {
     const durationMs = stepElapsed(t0)
-    log('amazon', false, durationMs, { item: item.name, error: err instanceof Error ? err.message : String(err) })
-    return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
-  }
-}
-
-async function lookupWalmart(item: ClaimItemInput): Promise<StepOutcome<{ price: number; sources: string[] }>> {
-  'use step'
-
-  const schema = z.object({
-    price: z.number().describe('Current retail replacement cost in USD on Walmart'),
-    sources: z
-      .array(z.string().url())
-      .min(1)
-      .describe('Walmart product listing URLs (walmart.com)'),
-  })
-
-  const t0 = performance.now()
-  try {
-    const { experimental_output, usage } = await generateText({
-      model: MODELS.priceSearch,
-      experimental_output: Output.object({ schema }),
-      tools: { webSearch: anthropic.tools.webSearch_20260209({ maxUses: 4 }) },
-      stopWhen: stepCountIs(4),
-      prompt: `You are an insurance pricing assistant. Search Walmart (walmart.com) for the current retail replacement cost of this item.
-
-Item: ${item.name}
-Brand: ${item.brand || 'unknown'}
-Model: ${item.model || 'unknown'}
-Condition: ${item.condition}
-Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
-Category: ${item.category || 'unknown'}
-
-Search ONLY on walmart.com — find the closest matching new or like-new retail listing.
-Return the price in USD and at least one walmart.com product URL from your search results.
-Do NOT estimate — only return a price you found on Walmart.`,
-    })
-
-    const durationMs = stepElapsed(t0)
-    const sources = (experimental_output?.sources ?? []).filter((url) => url.includes('walmart.com'))
-    const hit = !!experimental_output?.price && sources.length > 0
-
-    log('walmart', hit, durationMs, {
-      item: item.name,
-      price: experimental_output?.price,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-    })
-
-    if (!hit) return { value: null, durationMs, detail: sources.length ? 'no price on Walmart' : 'no Walmart listings' }
-    return { value: { price: experimental_output!.price, sources }, durationMs, detail: `${sources.length} listing${sources.length === 1 ? '' : 's'}` }
-  } catch (err) {
-    const durationMs = stepElapsed(t0)
-    log('walmart', false, durationMs, { item: item.name, error: err instanceof Error ? err.message : String(err) })
-    return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
-  }
-}
-
-async function lookupBestBuy(item: ClaimItemInput): Promise<StepOutcome<{ price: number; sources: string[] }>> {
-  'use step'
-
-  const schema = z.object({
-    price: z.number().describe('Current retail replacement cost in USD on Best Buy'),
-    sources: z
-      .array(z.string().url())
-      .min(1)
-      .describe('Best Buy product listing URLs (bestbuy.com)'),
-  })
-
-  const t0 = performance.now()
-  try {
-    const { experimental_output, usage } = await generateText({
-      model: MODELS.priceSearch,
-      experimental_output: Output.object({ schema }),
-      tools: { webSearch: anthropic.tools.webSearch_20260209({ maxUses: 4 }) },
-      stopWhen: stepCountIs(4),
-      prompt: `You are an insurance pricing assistant. Search Best Buy (bestbuy.com) for the current retail replacement cost of this item.
-
-Item: ${item.name}
-Brand: ${item.brand || 'unknown'}
-Model: ${item.model || 'unknown'}
-Condition: ${item.condition}
-Estimated age: ${item.estimatedAge ? `${item.estimatedAge} years` : 'unknown'}
-Category: ${item.category || 'unknown'}
-
-Search ONLY on bestbuy.com — find the closest matching new or like-new retail listing.
-Return the price in USD and at least one bestbuy.com product URL from your search results.
-Do NOT estimate — only return a price you found on Best Buy.`,
-    })
-
-    const durationMs = stepElapsed(t0)
-    const sources = (experimental_output?.sources ?? []).filter((url) => url.includes('bestbuy.com'))
-    const hit = !!experimental_output?.price && sources.length > 0
-
-    log('bestbuy', hit, durationMs, {
-      item: item.name,
-      price: experimental_output?.price,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-    })
-
-    if (!hit) return { value: null, durationMs, detail: sources.length ? 'no price on Best Buy' : 'no Best Buy listings' }
-    return { value: { price: experimental_output!.price, sources }, durationMs, detail: `${sources.length} listing${sources.length === 1 ? '' : 's'}` }
-  } catch (err) {
-    const durationMs = stepElapsed(t0)
-    log('bestbuy', false, durationMs, { item: item.name, error: err instanceof Error ? err.message : String(err) })
+    log('serp', false, durationMs, { error: err instanceof Error ? err.message : String(err) })
     return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
   }
 }
@@ -296,41 +186,26 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
   const workflowTrace: PriceTraceStep[] = []
   const traceKey = item.traceKey
 
-  // Run all sources in parallel — they're fully independent
-  await publishLiveTrace(traceKey, [
-    traceStep('ebay',    'running'),
-    traceStep('amazon',  'running'),
-    traceStep('walmart', 'running'),
-    traceStep('bestbuy', 'running'),
-  ])
-
-  const [ebay, amazon, walmart, bestbuy] = await Promise.all([
-    lookupEbay(item),
-    lookupAmazon(item),
-    lookupWalmart(item),
-    lookupBestBuy(item),
-  ])
-
-  workflowTrace.push(
-    traceStep('ebay',    ebay.value    ? 'hit' : 'miss', ebay.durationMs,    ebay.detail),
-    traceStep('amazon',  amazon.value  ? 'hit' : 'miss', amazon.durationMs,  amazon.detail),
-    traceStep('walmart', walmart.value ? 'hit' : 'miss', walmart.durationMs, walmart.detail),
-    traceStep('bestbuy', bestbuy.value ? 'hit' : 'miss', bestbuy.durationMs, bestbuy.detail),
-  )
+  // eBay — free, no tokens
+  await publishLiveTrace(traceKey, [...workflowTrace, traceStep('ebay', 'running')])
+  const ebayResult = await lookupEbay(item)
+  workflowTrace.push(traceStep('ebay', ebayResult.value ? 'hit' : 'miss', ebayResult.durationMs, ebayResult.detail))
   await publishLiveTrace(traceKey, workflowTrace)
 
-  // Take the lowest price across all hits — most defensible for insurance replacement cost
-  const hits = [
-    ebay.value    ? { ...ebay.value,    source: 'ebay'    as const } : null,
-    amazon.value  ? { ...amazon.value,  source: 'amazon'  as const } : null,
-    walmart.value ? { ...walmart.value, source: 'walmart' as const } : null,
-    bestbuy.value ? { ...bestbuy.value, source: 'bestbuy' as const } : null,
-  ].filter(Boolean) as Array<{ price: number; sources: string[]; source: 'ebay' | 'amazon' | 'walmart' | 'bestbuy' }>
+  if (ebayResult.value) {
+    await cachePrice(item, ebayResult.value.price, ebayResult.value.sources)
+    return { price: ebayResult.value.price, sources: ebayResult.value.sources, source: 'ebay' as const, trace: workflowTrace }
+  }
 
-  if (hits.length > 0) {
-    const best = hits.reduce((a, b) => a.price <= b.price ? a : b)
-    await cachePrice(item, best.price, best.sources)
-    return { price: best.price, sources: best.sources, source: best.source, trace: workflowTrace }
+  // SerpAPI — Google Shopping, ~$0.001/call
+  await publishLiveTrace(traceKey, [...workflowTrace, traceStep('serp', 'running')])
+  const serpResult = await lookupSerp(item)
+  workflowTrace.push(traceStep('serp', serpResult.value ? 'hit' : 'miss', serpResult.durationMs, serpResult.detail))
+  await publishLiveTrace(traceKey, workflowTrace)
+
+  if (serpResult.value) {
+    await cachePrice(item, serpResult.value.price, serpResult.value.sources)
+    return { price: serpResult.value.price, sources: serpResult.value.sources, source: 'serp' as const, trace: workflowTrace }
   }
 
   return { price: null, sources: [], source: 'not_found' as const, trace: workflowTrace }

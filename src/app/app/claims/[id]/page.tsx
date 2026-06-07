@@ -142,12 +142,13 @@ export default function ClaimWorkspacePage() {
     loadClaim()
   }, [claimId])
 
-  async function handleManualPrice(item: ClaimItem, price: number) {
+  async function handleManualPrice(item: ClaimItem, price: number, sourceUrl?: string) {
     const { item: updated } = await patchClaimItem(claimId, item.id, {
       manualPrice: price,
       itemName: item.name,
       itemBrand: item.brand,
       itemCondition: item.condition,
+      ...(sourceUrl ? { price_sources: [sourceUrl] } : {}),
     })
     setClaim((prev) =>
       prev ? { ...prev, items: prev.items.map((i) => (i.id === updated.id ? updated : i)) } : prev
