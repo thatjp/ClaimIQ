@@ -1,22 +1,9 @@
 import { streamText } from 'ai'
-import { put } from '@vercel/blob'
 import { getClaim } from '@/lib/claims'
-import { getClaimReadiness } from '@/lib/claims/grounding'
 import { MODELS, gatewayProviderOptions } from '@/lib/ai/models'
 
-async function saveClaimDocument(claimId: string, text: string) {
-  try {
-    await put(`claims/${claimId}/document.txt`, text, {
-      access: 'private',
-      contentType: 'text/plain',
-    })
-  } catch (error) {
-    console.error('Failed to save claim document to Blob:', error)
-  }
-}
-
 export async function POST(req: Request) {
-  const { claimId } = await req.json()
+  const { claimId, itemIds } = await req.json() as { claimId: string; itemIds?: string[] }
 
   if (!claimId) {
     return Response.json({ error: 'claimId is required' }, { status: 400 })
@@ -27,21 +14,15 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Claim not found' }, { status: 404 })
   }
 
-  const readiness = getClaimReadiness(claim.items)
-  if (!readiness.canGenerateDocument) {
-    return Response.json(
-      {
-        error: 'All line items must be approved with price and source URL before generating a document',
-        readiness,
-      },
-      { status: 422 }
-    )
+  const approvedItems = claim.items.filter((item) =>
+    itemIds ? itemIds.includes(item.id) : item.approved
+  )
+
+  if (approvedItems.length === 0) {
+    return Response.json({ error: 'No items selected for document generation' }, { status: 422 })
   }
 
-  const approvedItems = claim.items.filter((item) => item.approved)
-
-  const regionalRules =
-    req.headers.get('x-claim-rules') || 'Standard HO-3 policy rules apply.'
+  const regionalRules = req.headers.get('x-claim-rules') || 'Standard HO-3 policy rules apply.'
 
   const result = streamText({
     model: MODELS.docGen,
@@ -69,9 +50,6 @@ The document should include:
 7. Adjuster Certification Statement
 
 Format as a professional document ready for submission.`,
-    onFinish: ({ text }) => {
-      void saveClaimDocument(claimId, text)
-    },
   })
 
   return result.toTextStreamResponse()

@@ -12,10 +12,13 @@ export interface PricingState {
 }
 
 const STRATEGY_LABELS: Record<string, string> = {
-  kv_cache:           'KV Cache',
-  vector_cache:       'Vector Cache',
-  vector_cache_stale: 'Stale Cache',
-  serp:               'Google Shopping',
+  kv_cache:           'Cache',
+  vector_cache:       'Similar items',
+  vector_cache_stale: 'Stale cache',
+  ebay:               'eBay',
+  amazon:             'Amazon',
+  walmart:            'Walmart',
+  home_depot:         'Home Depot',
   manual:             'Manual',
 }
 

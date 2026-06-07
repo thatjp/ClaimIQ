@@ -5,29 +5,17 @@ import { traceStep, type PriceTraceStep, type PriceLayer } from '@/lib/pricing/t
 import { updateLiveTrace } from '@/lib/pricing/live-trace'
 import type { ClaimItemInput } from '@/lib/workflow'
 
-// eBay Finding API category IDs
-const EBAY_CATEGORY_MAP: Record<string, string> = {
-  electronics: '293',
-  appliances:  '20710',
-  furniture:   '3197',
-  clothing:    '11450',
-  jewelry:     '281',
-  tools:       '631',
-  other:       '',
-}
-
 // Which SerpAPI engines to try per category, in waterfall order.
-// Sources not listed for a category are skipped — no wasted API calls.
-type SerpEngine = 'amazon' | 'walmart' | 'home_depot'
+type SerpEngine = 'ebay' | 'amazon' | 'walmart' | 'home_depot'
 
 const CATEGORY_SOURCES: Record<string, SerpEngine[]> = {
-  electronics: ['amazon', 'walmart'],
+  electronics: ['ebay', 'amazon', 'walmart'],
   appliances:  ['home_depot', 'amazon', 'walmart'],
-  furniture:   ['amazon', 'walmart'],
+  furniture:   ['ebay', 'amazon', 'walmart'],
   clothing:    ['amazon', 'walmart'],
-  jewelry:     ['amazon'],
+  jewelry:     ['ebay', 'amazon'],
   tools:       ['home_depot', 'amazon', 'walmart'],
-  other:       ['amazon', 'walmart'],
+  other:       ['ebay', 'amazon', 'walmart'],
 }
 
 function log(layer: string, hit: boolean, durationMs: number, meta?: Record<string, unknown>) {
@@ -50,67 +38,31 @@ function serpQuery(item: ClaimItemInput): string {
   return [item.name, item.brand, item.model].filter(Boolean).join(' ')
 }
 
-// --- eBay (direct Finding API, no SerpAPI cost) ---
+// --- SerpAPI engine fetchers ---
 
-async function lookupEbay(item: ClaimItemInput): Promise<StepOutcome<PriceHit>> {
-  'use step'
-
-  const t0 = performance.now()
-
-  if (!process.env.EBAY_APP_ID) {
-    return { value: null, durationMs: stepElapsed(t0), detail: 'EBAY_APP_ID not configured' }
-  }
-
-  const keywords = [item.name, item.brand, item.model].filter(Boolean).join(' ')
-  const categoryId = EBAY_CATEGORY_MAP[item.category ?? 'other']
-
+async function fetchEbay(item: ClaimItemInput, apiKey: string): Promise<PriceHit | null> {
   const params = new URLSearchParams({
-    'OPERATION-NAME': 'findCompletedItems',
-    'SERVICE-VERSION': '1.0.0',
-    'SECURITY-APPNAME': process.env.EBAY_APP_ID,
-    'RESPONSE-DATA-FORMAT': 'JSON',
-    'keywords': keywords,
-    'itemFilter(0).name': 'SoldItemsOnly',
-    'itemFilter(0).value': 'true',
-    'sortOrder': 'EndTimeSoonest',
-    'paginationInput.entriesPerPage': '5',
+    api_key: apiKey,
+    engine: 'ebay',
+    _nkw: serpQuery(item),
+    LH_Sold: '1',
+    LH_Complete: '1',
   })
-  if (categoryId) params.set('categoryId', categoryId)
+  const res = await fetch(`https://serpapi.com/search?${params}`)
+  if (!res.ok) return null
+  const data = await res.json()
 
-  try {
-    const res = await fetch(`https://svcs.ebay.com/services/search/FindingService/v1?${params}`)
-    if (!res.ok) {
-      const durationMs = stepElapsed(t0)
-      log('ebay', false, durationMs, { status: res.status, item: item.name })
-      return { value: null, durationMs, detail: `HTTP ${res.status}` }
-    }
-    const data = await res.json()
+  type EbayResult = { price?: { raw?: number }; link?: string }
+  const results: EbayResult[] = data.organic_results ?? []
+  const priced = results.filter((r) => r.price?.raw != null && r.price.raw > 0)
+  if (!priced.length) return null
 
-    const listings: unknown[] = data.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item ?? []
-    if (!listings.length) {
-      const durationMs = stepElapsed(t0)
-      log('ebay', false, durationMs, { reason: 'no_results', item: item.name })
-      return { value: null, durationMs, detail: 'no sold listings' }
-    }
+  const prices = priced.map((r) => r.price!.raw!)
+  const price = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const sources = priced.map((r) => r.link).filter((u): u is string => !!u).slice(0, 3)
 
-    type EbayItem = { sellingStatus: [{ currentPrice: [{ __value__: string }] }]; viewItemURL: [string] }
-    const typed = listings as EbayItem[]
-    const prices = typed.map((i) => parseFloat(i.sellingStatus[0].currentPrice[0].__value__))
-    const avg = prices.reduce((a, b) => a + b, 0) / prices.length
-    const sources = typed.map((i) => i.viewItemURL[0])
-    const price = Math.round(avg)
-    const durationMs = stepElapsed(t0)
-
-    log('ebay', true, durationMs, { item: item.name, listingCount: listings.length, price })
-    return { value: { price, sources }, durationMs, detail: `${sources.length} listings` }
-  } catch (err) {
-    const durationMs = stepElapsed(t0)
-    log('ebay', false, durationMs, { error: err instanceof Error ? err.message : String(err) })
-    return { value: null, durationMs, detail: err instanceof Error ? err.message : String(err) }
-  }
+  return { price, sources }
 }
-
-// --- SerpAPI dedicated product engine fetchers ---
 
 async function fetchAmazon(item: ClaimItemInput, apiKey: string): Promise<PriceHit | null> {
   const params = new URLSearchParams({
@@ -189,12 +141,12 @@ async function fetchHomeDepot(item: ClaimItemInput, apiKey: string): Promise<Pri
 }
 
 const ENGINE_FETCHERS: Record<SerpEngine, (item: ClaimItemInput, apiKey: string) => Promise<PriceHit | null>> = {
+  ebay:       fetchEbay,
   amazon:     fetchAmazon,
   walmart:    fetchWalmart,
   home_depot: fetchHomeDepot,
 }
 
-// Separate workflow step per engine so the trace shows each source individually
 async function lookupSerpEngine(engine: SerpEngine, item: ClaimItemInput): Promise<StepOutcome<PriceHit>> {
   'use step'
 
@@ -210,7 +162,7 @@ async function lookupSerpEngine(engine: SerpEngine, item: ClaimItemInput): Promi
     log(engine, !!result, durationMs, { item: item.name, price: result?.price })
     return result
       ? { value: result, durationMs, detail: `${result.sources.length} listing${result.sources.length !== 1 ? 's' : ''}` }
-      : { value: null, durationMs, detail: `no results` }
+      : { value: null, durationMs, detail: 'no results' }
   } catch (err) {
     const durationMs = stepElapsed(t0)
     log(engine, false, durationMs, { item: item.name, error: err instanceof Error ? err.message : String(err) })
@@ -260,18 +212,6 @@ export async function priceItemWorkflow(item: ClaimItemInput) {
   const workflowTrace: PriceTraceStep[] = []
   const traceKey = item.traceKey
 
-  // Step 1: eBay sold listings — free direct API, good secondhand/replacement comps
-  await publishLiveTrace(traceKey, [...workflowTrace, traceStep('ebay', 'running')])
-  const ebayResult = await lookupEbay(item)
-  workflowTrace.push(traceStep('ebay', ebayResult.value ? 'hit' : 'miss', ebayResult.durationMs, ebayResult.detail))
-  await publishLiveTrace(traceKey, workflowTrace)
-
-  if (ebayResult.value) {
-    await cachePrice(item, ebayResult.value.price, ebayResult.value.sources)
-    return { price: ebayResult.value.price, sources: ebayResult.value.sources, source: 'ebay' as const, trace: workflowTrace }
-  }
-
-  // Step 2: SerpAPI product engines — category-mapped waterfall, stop on first hit
   const engines = CATEGORY_SOURCES[item.category ?? 'other'] ?? CATEGORY_SOURCES.other
 
   for (const engine of engines) {

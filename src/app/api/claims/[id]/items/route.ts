@@ -42,3 +42,27 @@ export async function POST(
     return Response.json({ error: 'Failed to save items' }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: claimId } = await params
+  const { itemIds } = await req.json() as { itemIds: string[] }
+
+  if (!Array.isArray(itemIds) || itemIds.length === 0) {
+    return Response.json({ error: 'itemIds array is required' }, { status: 400 })
+  }
+
+  try {
+    const { rows } = await db`
+      DELETE FROM claim_items
+      WHERE claim_id = ${claimId} AND id = ANY(${itemIds}::uuid[])
+      RETURNING id
+    `
+    return Response.json({ deleted: rows.map((r) => r.id as string) })
+  } catch (err) {
+    console.error('Failed to bulk delete claim items:', err)
+    return Response.json({ error: 'Failed to delete items' }, { status: 500 })
+  }
+}

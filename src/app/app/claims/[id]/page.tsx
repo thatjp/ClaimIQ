@@ -6,10 +6,8 @@ import { useCompletion } from '@ai-sdk/react'
 import type { Claim, ClaimItem } from '@/types/items'
 import { ClaimHeader } from '@/components/claim/ClaimHeader'
 import { ClaimItemsTable } from '@/components/claim/ClaimItemsTable'
-import { AIChatPanel } from '@/components/claim/AIChatPanel'
 import { useClaimPricing } from '@/lib/hooks/useClaimPricing'
 import { patchClaimItem } from '@/lib/claims/client'
-import { getClaimReadiness } from '@/lib/claims/grounding'
 
 function fallbackClaim(claimId: string): Claim {
   return {
@@ -23,26 +21,19 @@ function fallbackClaim(claimId: string): Claim {
   }
 }
 
-function DocumentPanel({
+function DocumentPane({
+  completion,
+  isLoading,
+  error,
   claimId,
-  onClose,
+  onRetry,
 }: {
+  completion: string
+  isLoading: boolean
+  error: Error | undefined
   claimId: string
-  onClose: () => void
+  onRetry: () => void
 }) {
-  const hasStarted = useRef(false)
-  const { completion, complete, isLoading, error } = useCompletion({
-    api: '/api/generate',
-    body: { claimId },
-    streamProtocol: 'text',
-  })
-
-  useEffect(() => {
-    if (hasStarted.current) return
-    hasStarted.current = true
-    complete('')
-  }, [complete])
-
   function handleExport() {
     const blob = new Blob([completion], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
@@ -54,67 +45,52 @@ function DocumentPanel({
   }
 
   return (
-    <div className="border-t border-gray-200 mt-6 pt-6">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Claim Document</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {isLoading ? 'Generating…' : 'Ready for review'}
-          </p>
-        </div>
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 shrink-0">
+        <p className="text-xs text-gray-500">
+          {isLoading ? 'Generating…' : error ? 'Generation failed' : 'Ready'}
+        </p>
         <div className="flex gap-2">
+          {error && (
+            <button onClick={onRetry} className="text-xs text-red-600 hover:underline">
+              Retry
+            </button>
+          )}
           {completion && !isLoading && (
             <button
               onClick={handleExport}
-              className="bg-gray-800 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-gray-900 transition-colors"
+              className="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-900 transition-colors"
             >
               Export
             </button>
           )}
-          {error && (
-            <button
-              onClick={() => complete('')}
-              className="text-xs text-red-600 hover:underline"
-            >
-              Retry
-            </button>
-          )}
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-xs font-medium hover:bg-gray-50 transition-colors"
-          >
-            Close
-          </button>
         </div>
       </div>
 
-      {error && (
-        <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-100 mb-4">
-          {error.message}
-        </p>
-      )}
-
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="flex-1 overflow-auto p-6">
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-100 mb-4">
+            {error.message}
+          </p>
+        )}
         {isLoading && !completion && (
-          <div className="flex items-center gap-3 py-8 justify-center">
+          <div className="flex items-center gap-3 py-16 justify-center">
             <div className="animate-spin w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full" />
             <span className="text-sm text-gray-500">Generating document…</span>
           </div>
         )}
-        {completion ? (
+        {completion && (
           <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">
             {completion}
-            {isLoading && (
-              <span className="inline-block w-2 h-4 bg-blue-600 ml-0.5 animate-pulse" />
-            )}
+            {isLoading && <span className="inline-block w-2 h-4 bg-blue-600 ml-0.5 animate-pulse" />}
           </pre>
-        ) : !isLoading && (
-          <p className="text-sm text-gray-400 text-center py-8">No document generated yet.</p>
         )}
       </div>
     </div>
   )
 }
+
+type Tab = 'items' | 'document'
 
 export default function ClaimWorkspacePage() {
   const params = useParams()
@@ -122,11 +98,27 @@ export default function ClaimWorkspacePage() {
 
   const [claim, setClaim] = useState<Claim | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showDocument, setShowDocument] = useState(false)
+  const [activeTab, setActiveTab] = useState<Tab>('items')
+  const [documentItemIds, setDocumentItemIds] = useState<string[] | null>(null)
 
   const { pricingState, refreshPrice } = useClaimPricing(
     (updater) => setClaim((prev) => (prev ? { ...prev, items: updater(prev.items) } : prev))
   )
+
+  // Completion state lives here so it survives tab switches
+  const hasStarted = useRef(false)
+  const { completion, complete, isLoading: docLoading, error: docError } = useCompletion({
+    api: '/api/generate',
+    body: { claimId, itemIds: documentItemIds },
+    streamProtocol: 'text',
+  })
+
+  // Start generation once itemIds are set
+  useEffect(() => {
+    if (!documentItemIds || hasStarted.current) return
+    hasStarted.current = true
+    complete('')
+  }, [documentItemIds, complete])
 
   useEffect(() => {
     async function loadClaim() {
@@ -162,9 +154,23 @@ export default function ClaimWorkspacePage() {
     )
   }
 
-  function handleGenerate() {
-    const readiness = getClaimReadiness(claim?.items ?? [])
-    if (readiness.approvedCount > 0) setShowDocument(true)
+  async function handleDeleteItems(itemIds: string[]) {
+    const res = await fetch(`/api/claims/${claimId}/items`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemIds }),
+    })
+    if (!res.ok) throw new Error('Failed to delete items')
+    setClaim((prev) =>
+      prev ? { ...prev, items: prev.items.filter((i) => !itemIds.includes(i.id)) } : prev
+    )
+  }
+
+  function handleGenerateForItems(itemIds: string[]) {
+    // Reset so a new generation can start if items change
+    hasStarted.current = false
+    setDocumentItemIds(itemIds)
+    setActiveTab('document')
   }
 
   if (loading) {
@@ -185,29 +191,60 @@ export default function ClaimWorkspacePage() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-full">
-      <div className="flex-1 overflow-auto p-4 md:p-8">
-        <ClaimHeader
-          claim={claim}
-          claimId={claimId}
-          onGenerate={handleGenerate}
-          generating={showDocument}
-        />
-        <ClaimItemsTable
-          items={claim.items}
-          pricingState={pricingState}
-          onRefreshPrice={(item: ClaimItem) => refreshPrice(item)}
-          onManualPrice={handleManualPrice}
-          onApprovalChange={handleApprovalChange}
-        />
-        {showDocument && (
-          <DocumentPanel
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="px-4 md:px-8 pt-4 md:pt-8 shrink-0">
+        <ClaimHeader claim={claim} claimId={claimId} />
+
+        <div className="flex border-b border-gray-200 -mb-px">
+          <button
+            onClick={() => setActiveTab('items')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'items'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Items
+          </button>
+          {documentItemIds && (
+            <button
+              onClick={() => setActiveTab('document')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'document'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Document
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        {activeTab === 'items' && (
+          <div className="p-4 md:p-8 pt-6">
+            <ClaimItemsTable
+              items={claim.items}
+              pricingState={pricingState}
+              onRefreshPrice={(item: ClaimItem) => refreshPrice(item)}
+              onManualPrice={handleManualPrice}
+              onApprovalChange={handleApprovalChange}
+              onDeleteItems={handleDeleteItems}
+              onGenerateForItems={handleGenerateForItems}
+            />
+          </div>
+        )}
+        {activeTab === 'document' && documentItemIds && (
+          <DocumentPane
+            completion={completion}
+            isLoading={docLoading}
+            error={docError}
             claimId={claimId}
-            onClose={() => setShowDocument(false)}
+            onRetry={() => { hasStarted.current = false; complete('') }}
           />
         )}
       </div>
-      <AIChatPanel claimId={claimId} />
     </div>
   )
 }

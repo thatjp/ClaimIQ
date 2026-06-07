@@ -13,6 +13,5 @@ export const gatewayProviderOptions = {
 export const MODELS = {
   extraction: gateway('anthropic/claude-haiku-4-5-20251001'),
   priceNorm: gateway('anthropic/claude-haiku-4-5-20251001'),
-  chat: gateway('anthropic/claude-haiku-4-5-20251001'),
   docGen: gateway('anthropic/claude-haiku-4-5-20251001'),
 }

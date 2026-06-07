@@ -39,6 +39,19 @@ function parseWalmart(data: unknown): PriceHit | null {
   return { price, sources }
 }
 
+function parseEbay(data: unknown): PriceHit | null {
+  type R = { price?: { raw?: number }; link?: string }
+  const results: R[] = (data as Record<string, unknown>)?.organic_results as R[] ?? []
+  const priced = results.filter((r) => r.price?.raw != null && r.price.raw > 0)
+  if (!priced.length) return null
+
+  const prices = priced.map((r) => r.price!.raw!)
+  const price = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const sources = priced.map((r) => r.link).filter((u): u is string => !!u).slice(0, 3)
+
+  return { price, sources }
+}
+
 function parseHomeDepot(data: unknown): PriceHit | null {
   type R = { price?: number; link?: string }
   const results: R[] = (data as Record<string, unknown>)?.products as R[] ?? []
@@ -56,7 +69,7 @@ const PARSERS: Record<string, (data: unknown) => PriceHit | null> = {
   amazon:     parseAmazon,
   walmart:    parseWalmart,
   home_depot: parseHomeDepot,
-  ebay:       () => null, // eBay uses the direct Finding API, not parsed in evals
+  ebay:       parseEbay,
 }
 
 export function scorePricingParse(fixture: PricingParseFixture, durationMs: number): PricingParseResult {

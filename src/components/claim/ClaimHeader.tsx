@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { StatusBadge } from '@/components/StatusBadge'
-import { getClaimReadiness } from '@/lib/claims/grounding'
 import type { ClaimItem } from '@/types/items'
 
 interface Claim {
@@ -15,15 +14,9 @@ interface Claim {
 interface Props {
   claim: Claim
   claimId: string
-  onGenerate: () => void
-  generating: boolean
 }
 
-export function ClaimHeader({ claim, claimId, onGenerate, generating }: Props) {
-  const items = claim.items ?? []
-  const readiness = getClaimReadiness(items)
-  const canGenerate = readiness.canGenerateDocument
-
+export function ClaimHeader({ claim, claimId }: Props) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
       <div>
@@ -43,13 +36,6 @@ export function ClaimHeader({ claim, claimId, onGenerate, generating }: Props) {
             </span>
           </span>
         </div>
-        {items.length > 0 && (
-          <p className={`text-xs mt-2 ${readiness.approvedCount > 0 ? 'text-green-700' : 'text-amber-700'}`}>
-            {readiness.approvedCount > 0
-              ? `${readiness.approvedCount} of ${items.length} items approved — document will include approved items only`
-              : `${items.length} items — check the box next to each priced item to approve it`}
-          </p>
-        )}
       </div>
       <div className="flex flex-wrap gap-2">
         <Link
@@ -64,22 +50,6 @@ export function ClaimHeader({ claim, claimId, onGenerate, generating }: Props) {
         >
           + Add Items
         </Link>
-        {readiness.approvedCount > 0 ? (
-          <button
-            onClick={onGenerate}
-            disabled={generating}
-            className="bg-gray-800 text-white px-3 py-1.5 rounded-md text-xs md:text-sm font-medium hover:bg-gray-900 disabled:opacity-60 transition-colors"
-          >
-            {generating ? 'Generating…' : `Generate Document (${readiness.approvedCount})`}
-          </button>
-        ) : (
-          <span
-            title="Check at least one priced item to approve it"
-            className="bg-gray-300 text-gray-500 px-3 py-1.5 rounded-md text-xs md:text-sm font-medium cursor-not-allowed"
-          >
-            Generate Document
-          </span>
-        )}
       </div>
     </div>
   )
