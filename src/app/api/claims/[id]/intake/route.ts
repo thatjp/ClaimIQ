@@ -1,3 +1,19 @@
+/*
+ * WORKFLOW
+ * The first iteration of this pipeline was a single API route: call the AI model,
+ * parse the response, begin pricing lookups. It worked for simple cases but was
+ * fragile — a slow SerpAPI call or a DB write failure would take down the entire run
+ * with no way to resume or diagnose where it broke.
+ *
+ * Moving to Vercel Workflow gave each stage a durable checkpoint. The Workflows UI
+ * made it immediately clear where failures were occurring, which is how I identified
+ * that the pricing lookups needed to be replaced with a structured SerpAPI pipeline
+ * rather than open-ended model-driven searches.
+ *
+ * The workflow boundary also created a natural containment layer for AI calls —
+ * runaway token usage, looping tool calls, and slow responses are now observable
+ * and isolated to individual steps rather than silently failing the whole intake.
+ */
 import { db } from '@/lib/db'
 import { triggerIntakeWorkflow } from '@/lib/workflow'
 

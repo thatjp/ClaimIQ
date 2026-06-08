@@ -1,3 +1,19 @@
+/*
+ * AI SDK
+ * The flagged item resolution pipeline is probably the most comprehensive use of the AI SDK.
+ * While it is used elsewhere in the application such as in the intake pipeline for extracting fields,
+ * This is a more complex use case for it. 
+ * 
+ * Creating a tool for each posisble flag action helped smooth out the triage flow. 
+ * I originally opened up the claims page to raw manual edits to lean on the 
+ * adjusters intuation however I already had AI powered flagging in place. 
+ * It was not a far stretch for me to add a tool for each flag action.
+ *
+ * Using stopWhen: stepCountIs(5) helped in stopping the agent from calling tools indefinitely.
+ * The flagging resolution system was one of the last pieces of the application, as such I had 
+ * seen some runaway behavior previously in workflows UI. Being aware of those pitfalls I 
+ * implemented the stopWhen limit.
+ */
 import { generateText, stepCountIs } from 'ai'
 import { MODELS, gatewayProviderOptions } from '@/lib/ai/models'
 import { searchSimilarItemsTool } from '@/lib/ai/tools/search-similar-items'
@@ -6,9 +22,6 @@ import { createListClaimItemsTool } from '@/lib/ai/tools/list-claim-items'
 import { createSubmitSuggestionTool } from '@/lib/ai/tools/submit-suggestion'
 import type { ClaimItem } from '@/types/items'
 import type { ItemSuggestion, ResolveResult, ToolCallSummary } from '@/lib/ai/resolver-types'
-
-// AI SDK tool-use agent for flagged items. Workflows handle bulk pricing; this runs
-// on-demand when an adjuster resolves vague, duplicate, or structural line items.
 
 export interface ResolveFlaggedItemInput {
   claimId: string

@@ -1,3 +1,15 @@
+/*
+ * PGVECTOR SIMILARITY CACHE
+ * 
+ * From previous exact cache matches were not always going to be successful.
+ * As such I decided to layer lookups with a more robust similarity cache.
+ * 
+ * Exact cache will hit first but if it misses the similarity cache will be used to find a similar item. 
+ * The distance threshold can and should be adjusted but for now I have it set to 0.15.
+ * 
+ * It's worked well but I may need a larger database to support the application of this approach.
+ * 
+ */
 import { db } from '@/lib/db'
 import { embedItem } from '@/lib/ai/embed'
 

@@ -3,6 +3,16 @@ import { z } from 'zod'
 import { sanitizeInput } from '@/lib/sanitize'
 import { MODELS, gatewayProviderOptions } from '@/lib/ai/models'
 
+/* EXTRACTION PIPELINE
+ * Using generateObject with a Zod schema allowed for easier validation of the extracted items.
+ * 
+ * This is very important for the extraction pipeline as if the items are not extracted correctly
+ * the pricing pipeline will not be able to price the items correctly. 
+ *
+ *
+ * Running sanitizeInput before the text reaches the prompt helpeds to prevent 
+ * instruction injection into the prompt.
+ */
 export const ItemSchema = z.object({
   items: z.array(
     z.object({

@@ -242,7 +242,7 @@ function NewClaimForm() {
           <button
             type="submit"
             disabled={intakeState.stage === 'triggering'}
-            className="bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex-1 md:flex-none bg-blue-600 text-white px-6 py-3 md:py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {intakeState.stage === 'triggering'
               ? 'Starting…'

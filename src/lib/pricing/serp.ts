@@ -1,3 +1,19 @@
+/*
+ * SERP PRICING PIPELINE
+ * The original approach let the AI model search for prices in a loose manner. 
+ * The results were inconsistent and slow sometimes taking 20-30 seconds per item.
+ *
+ * I realized I needed to use a more structured approach to pricing.
+ *
+ * I first decided on using SerpAPI to fetch prices from the marketplaces. In the
+ * future I may have to build out a more robust pricing pipeline using a different API. 
+ * However for now SerpAPI is a good fit.
+ * 
+ * To attempt to improve accuracy I decided to try to match sources to item categories.
+ * This helps to ensure that the pricing is more accurate and would allow the user the ability
+ * to route to a resource link more inline with that item in the claim.
+ * 
+ */
 import type { ClaimItemInput } from '@/lib/workflow'
 
 export type SerpEngine = 'ebay' | 'amazon' | 'walmart' | 'home_depot'
