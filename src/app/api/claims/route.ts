@@ -26,18 +26,8 @@ export async function POST(req: Request) {
       RETURNING *
     `
     return Response.json(rows[0], { status: 201 })
-  } catch {
-    const mockClaim = {
-      id: `mock-${Date.now()}`,
-      user_id: DEMO_USER_ID,
-      title: title ?? null,
-      state: state || 'CA',
-      policy_type: policyType || 'HO-3',
-      date_of_loss: dateOfLoss || new Date().toISOString().split('T')[0],
-      status: 'open',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-    return Response.json(mockClaim, { status: 201 })
+  } catch (err) {
+    console.error('Failed to create claim:', err)
+    return Response.json({ error: 'Failed to create claim' }, { status: 500 })
   }
 }
