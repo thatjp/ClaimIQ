@@ -9,6 +9,7 @@ import { ClaimItemsTable } from '@/components/claim/ClaimItemsTable'
 import { DocumentPane } from '@/components/claim/DocumentPane'
 import { useClaimPricing } from '@/lib/hooks/useClaimPricing'
 import { patchClaimItem } from '@/lib/claims/client'
+import type { ItemSuggestion } from '@/lib/ai/resolver-types'
 
 function fallbackClaim(claimId: string): Claim {
   return {
@@ -66,19 +67,6 @@ export default function ClaimWorkspacePage() {
     loadClaim()
   }, [claimId])
 
-  async function handleManualPrice(item: ClaimItem, price: number, sourceUrl?: string) {
-    const { item: updated } = await patchClaimItem(claimId, item.id, {
-      manualPrice: price,
-      itemName: item.name,
-      itemBrand: item.brand,
-      itemCondition: item.condition,
-      ...(sourceUrl ? { price_sources: [sourceUrl] } : {}),
-    })
-    setClaim((prev) =>
-      prev ? { ...prev, items: prev.items.map((i) => (i.id === updated.id ? updated : i)) } : prev
-    )
-  }
-
   async function handleApprovalChange(itemId: string, approved: boolean) {
     const { item: updated } = await patchClaimItem(claimId, itemId, { approved })
     setClaim((prev) =>
@@ -91,7 +79,55 @@ export default function ClaimWorkspacePage() {
     setClaim((prev) =>
       prev ? { ...prev, items: prev.items.map((i) => (i.id === updated.id ? updated : i)) } : prev
     )
-    // Re-price using the updated item fields
+    refreshPrice(updated)
+  }
+
+  async function handleApplySuggestion(item: ClaimItem, suggestion: ItemSuggestion) {
+    if (suggestion.action === 'exclude') {
+      await handleDeleteItems([item.id])
+      return
+    }
+
+    if (suggestion.action === 'merge') {
+      if (!suggestion.mergeIntoItemId) {
+        throw new Error('Merge suggestion is missing target item')
+      }
+      const target = claim?.items.find((i) => i.id === suggestion.mergeIntoItemId)
+      if (!target) {
+        throw new Error('Target item for merge not found')
+      }
+      const mergedQty = target.quantity + (suggestion.quantity ?? item.quantity)
+      const { item: updatedTarget } = await patchClaimItem(claimId, target.id, { quantity: mergedQty })
+      await handleDeleteItems([item.id])
+      setClaim((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items
+                .filter((i) => i.id !== item.id)
+                .map((i) => (i.id === updatedTarget.id ? updatedTarget : i)),
+            }
+          : prev
+      )
+      return
+    }
+
+    const updates: Record<string, unknown> = {}
+    if (suggestion.name) updates.name = suggestion.name
+    if ('brand' in suggestion) updates.brand = suggestion.brand ?? null
+    if ('model' in suggestion) updates.model = suggestion.model ?? null
+    if (suggestion.category) updates.category = suggestion.category
+    if (suggestion.condition) updates.condition = suggestion.condition
+    if (suggestion.quantity) updates.quantity = suggestion.quantity
+    if (suggestion.clearFlag) {
+      updates.flagged = false
+      updates.flag_reason = null
+    }
+
+    const { item: updated } = await patchClaimItem(claimId, item.id, updates)
+    setClaim((prev) =>
+      prev ? { ...prev, items: prev.items.map((i) => (i.id === updated.id ? updated : i)) } : prev
+    )
     refreshPrice(updated)
   }
 
@@ -166,13 +202,14 @@ export default function ClaimWorkspacePage() {
         {activeTab === 'items' && (
           <div className="p-4 md:p-8 pt-6">
             <ClaimItemsTable
+              claimId={claimId}
               items={claim.items}
               pricingState={pricingState}
-              onManualPrice={handleManualPrice}
               onApprovalChange={handleApprovalChange}
               onDeleteItems={handleDeleteItems}
               onGenerateForItems={handleGenerateForItems}
               onEditItem={handleEditItem}
+              onApplySuggestion={handleApplySuggestion}
             />
           </div>
         )}

@@ -34,10 +34,8 @@ export function useClaimPricing(
   setItems: (updater: (prev: ClaimItem[]) => ClaimItem[]) => void
 ) {
   const [pricingState, setPricingState] = useState<PricingState | null>(null)
-  const [notFoundIds, setNotFoundIds] = useState<Set<string>>(new Set())
 
   async function refreshPrice(item: ClaimItem) {
-    setNotFoundIds((prev) => { const next = new Set(prev); next.delete(item.id); return next })
     setPricingState({ id: item.id, strategy: 'Searching...', trace: [] })
 
     try {
@@ -47,9 +45,7 @@ export function useClaimPricing(
         },
       })
 
-      if (outcome.notFound) {
-        setNotFoundIds((prev) => new Set(prev).add(item.id))
-      } else if (outcome.price != null && outcome.source) {
+      if (!outcome.notFound && outcome.price != null && outcome.source) {
         setItems((prev) =>
           prev.map((i) =>
             i.id === item.id
@@ -83,5 +79,5 @@ export function useClaimPricing(
     }
   }
 
-  return { pricingState, notFoundIds, refreshPrice }
+  return { pricingState, refreshPrice }
 }

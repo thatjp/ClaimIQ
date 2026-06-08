@@ -5,21 +5,23 @@ import type { ClaimItem } from '@/types/items'
 import type { PricingState } from '@/lib/hooks/useClaimPricing'
 import { canApproveItem } from '@/lib/claims/grounding'
 import { PriceSourceBadge, SourceLinks } from './PriceSourceBadge'
-import { ManualPriceInput } from './ManualPriceInput'
 import { ItemEditForm } from './ItemEditForm'
+import { FlaggedItemResolver } from './FlaggedItemResolver'
+import type { ItemSuggestion } from '@/lib/ai/resolver-types'
 
 type SortOrder = 'none' | 'asc' | 'desc'
 
 const PAGE_SIZE = 10
 
 export interface ClaimItemsTableProps {
+  claimId: string
   items: ClaimItem[]
   pricingState: PricingState | null
-  onManualPrice: (item: ClaimItem, price: number, sourceUrl?: string) => Promise<void>
   onApprovalChange: (itemId: string, approved: boolean) => Promise<void>
   onDeleteItems: (itemIds: string[]) => Promise<void>
   onGenerateForItems: (itemIds: string[]) => void
   onEditItem: (itemId: string, updates: Partial<ClaimItem>) => Promise<void>
+  onApplySuggestion: (item: ClaimItem, suggestion: ItemSuggestion) => Promise<void>
 }
 
 // --- Sub-components ---
@@ -44,14 +46,12 @@ function PriceCell({
   strategy,
   priceKey,
   priceClass,
-  onManualPrice,
 }: {
   item: ClaimItem
   pricing: boolean
   strategy: string | undefined
   priceKey: string
   priceClass: string
-  onManualPrice: (item: ClaimItem, price: number, sourceUrl?: string) => Promise<void>
 }) {
   if (item.price) {
     return (
@@ -70,19 +70,20 @@ function PriceCell({
       </span>
     )
   }
-  return <ManualPriceInput item={item} onSave={onManualPrice} />
+  return <span className="text-xs text-gray-400">no source found</span>
 }
 
 // --- Main component ---
 
 export function ClaimItemsTable({
+  claimId,
   items,
   pricingState,
-  onManualPrice,
   onApprovalChange,
   onDeleteItems,
   onGenerateForItems,
   onEditItem,
+  onApplySuggestion,
 }: ClaimItemsTableProps) {
   const active = pricingState
 
@@ -308,7 +309,6 @@ export function ClaimItemsTable({
                             strategy={active?.strategy}
                             priceKey={priceKey(item)}
                             priceClass={priceClass(item)}
-                            onManualPrice={onManualPrice}
                           />
                         </td>
                         <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -326,6 +326,13 @@ export function ClaimItemsTable({
                             <div className="edit-form-expand-inner">
                               {mountedEditId === item.id && (
                                 <div className="edit-form-enter">
+                                  {item.flagged && (
+                                    <FlaggedItemResolver
+                                      claimId={claimId}
+                                      item={item}
+                                      onApply={(suggestion) => onApplySuggestion(item, suggestion)}
+                                    />
+                                  )}
                                   <ItemEditForm
                                     item={item}
                                     onSave={async (updates) => {
@@ -396,9 +403,7 @@ export function ClaimItemsTable({
                               </div>
                             )}
                             {!isEditing && !item.price && !pricing && (
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ManualPriceInput item={item} onSave={onManualPrice} />
-                              </div>
+                              <p className="mt-1 text-xs text-gray-400">no source found</p>
                             )}
                           </div>
                           <div className="flex flex-col items-end gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -430,6 +435,13 @@ export function ClaimItemsTable({
                     <div className="edit-form-expand-inner">
                       {mountedEditId === item.id && (
                         <div className="edit-form-enter">
+                          {item.flagged && (
+                            <FlaggedItemResolver
+                              claimId={claimId}
+                              item={item}
+                              onApply={(suggestion) => onApplySuggestion(item, suggestion)}
+                            />
+                          )}
                           <ItemEditForm
                             item={item}
                             onSave={async (updates) => {

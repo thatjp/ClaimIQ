@@ -96,6 +96,14 @@ export async function PATCH(
     }
   }
 
+  if ('flagged' in body) {
+    updates.flagged = body.flagged === true
+  }
+
+  if ('flag_reason' in body) {
+    updates.flag_reason = body.flag_reason == null ? null : String(body.flag_reason)
+  }
+
   if ('approved' in body) {
     updates.approved = body.approved === true
     if (updates.approved) {
@@ -111,6 +119,10 @@ export async function PATCH(
         model: updates.model ?? item.model ?? undefined,
         price_sources: updates.price_sources ?? item.price_sources,
         price: 'price' in updates ? (updates.price ?? undefined) : item.price,
+        flag_reason:
+          'flag_reason' in updates
+            ? (updates.flag_reason ?? undefined)
+            : item.flag_reason,
       }
       if (!canApproveItem(candidate)) {
         return Response.json(

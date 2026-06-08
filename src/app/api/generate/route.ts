@@ -27,6 +27,11 @@ export async function POST(req: Request) {
   const result = streamText({
     model: MODELS.docGen,
     providerOptions: gatewayProviderOptions,
+    experimental_telemetry: {
+      isEnabled: true,
+      functionId: 'generate-claim-document',
+      metadata: { claimId },
+    },
     system: `You are generating a professional insurance claim document for submission.
 Format the document with clear sections and use precise, defensible language.
 Every line item MUST include: item name, condition, replacement value, and source URL.

@@ -54,6 +54,10 @@ export async function extractItems(text: string, imageBase64?: string | null) {
     model: MODELS.extraction,
     providerOptions: gatewayProviderOptions,
     schema: ItemSchema,
+    experimental_telemetry: {
+      isEnabled: true,
+      functionId: 'extract-items',
+    },
     ...(imageBase64
       ? { messages }
       : {

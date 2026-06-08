@@ -1,7 +1,7 @@
 import { extractItems } from '@/lib/ai/extraction'
 import { db } from '@/lib/db'
 import { kv } from '@/lib/kv'
-import { embedItem } from '@/lib/ai/embed'
+import { searchSimilarCachedItems } from '@/lib/pricing/similar-items'
 import {
   writeIntakeProgress,
   type IntakeProgress,
@@ -41,9 +41,19 @@ interface PersistedItem {
 
 const BATCH_SIZE = 5
 
+function log(event: string, meta: Record<string, unknown>) {
+  console.log(JSON.stringify({ service: 'intake-workflow', event, ...meta }))
+}
+
 async function extractItemsStep(text: string, imageBase64?: string | null): Promise<RawItem[]> {
   'use step'
+  const t0 = performance.now()
   const result = await extractItems(text, imageBase64)
+  log('extraction_complete', {
+    itemCount: result.items.length,
+    flaggedCount: result.items.filter((i) => i.flagReason).length,
+    durationMs: Math.round(performance.now() - t0),
+  })
   return result.items as RawItem[]
 }
 
@@ -131,19 +141,16 @@ async function lookupPriceFromCache(item: PersistedItem): Promise<CacheOutcome |
 
   // Layer 2: pgvector similarity
   try {
-    const embedding = await embedItem({ name: item.name, brand: item.brand ?? undefined, condition: item.condition })
-    const { rows } = await db`
-      SELECT *, embedding <=> ${JSON.stringify(embedding)}::vector AS distance
-      FROM item_prices
-      ORDER BY embedding <=> ${JSON.stringify(embedding)}::vector
-      LIMIT 1
-    `
-    const distance = rows[0]?.distance as number | undefined
-    if (rows.length > 0 && distance != null && distance < 0.15) {
+    const matches = await searchSimilarCachedItems(
+      { name: item.name, brand: item.brand ?? undefined, condition: item.condition },
+      { limit: 1 }
+    )
+    if (matches.length > 0) {
+      const match = matches[0]
       trace.push(traceStep('vector_cache', 'hit'))
       return {
-        price: parseFloat(rows[0].price as string),
-        sources: (rows[0].sources as string[]) ?? [],
+        price: match.price,
+        sources: match.sources,
         source: 'vector_cache',
         trace,
       }
@@ -160,6 +167,8 @@ export async function claimIntakeWorkflow(input: IntakeInput): Promise<void> {
   'use workflow'
 
   const { intakeKey, claimId, text, imageBase64 } = input
+  const t0 = performance.now()
+  log('intake_started', { claimId, hasImage: !!imageBase64, textLength: text.length })
 
   await publishIntakeProgressStep(intakeKey, { phase: 'extracting', items: [] })
 
@@ -217,6 +226,7 @@ export async function claimIntakeWorkflow(input: IntakeInput): Promise<void> {
 
           if (cacheOutcome) {
             await updateItemPriceStep(claimId, item.id, cacheOutcome.price, cacheOutcome.sources, cacheOutcome.source)
+            log('item_priced', { claimId, itemId: item.id, item: item.name, price: cacheOutcome.price, source: cacheOutcome.source, cacheHit: true })
             progressItems[idx] = {
               id: item.id,
               name: item.name,
@@ -251,6 +261,7 @@ export async function claimIntakeWorkflow(input: IntakeInput): Promise<void> {
             ]
             if (workflowResult.price != null) {
               await updateItemPriceStep(claimId, item.id, workflowResult.price, workflowResult.sources, workflowResult.source)
+              log('item_priced', { claimId, itemId: item.id, item: item.name, price: workflowResult.price, source: workflowResult.source, cacheHit: false })
               progressItems[idx] = {
                 id: item.id,
                 name: item.name,
@@ -260,6 +271,7 @@ export async function claimIntakeWorkflow(input: IntakeInput): Promise<void> {
                 trace: fullTrace,
               }
             } else {
+              log('item_price_not_found', { claimId, itemId: item.id, item: item.name })
               progressItems[idx] = { id: item.id, name: item.name, priceStatus: 'error', trace: fullTrace }
             }
           }
@@ -273,4 +285,13 @@ export async function claimIntakeWorkflow(input: IntakeInput): Promise<void> {
   }
 
   await publishIntakeProgressStep(intakeKey, { phase: 'done', items: [...progressItems] })
+
+  const pricedCount = progressItems.filter((i) => i.priceStatus === 'found').length
+  log('intake_complete', {
+    claimId,
+    itemCount: progressItems.length,
+    pricedCount,
+    notFoundCount: progressItems.length - pricedCount,
+    durationMs: Math.round(performance.now() - t0),
+  })
 }

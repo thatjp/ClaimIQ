@@ -11,6 +11,10 @@ export async function embedItem(item: {
   const { embedding } = await embed({
     model: voyage.textEmbeddingModel('voyage-3-lite'),
     value: `${item.name} ${item.brand ?? ''} ${item.condition}`.trim(),
+    experimental_telemetry: {
+      isEnabled: true,
+      functionId: 'embed-item',
+    },
   })
   return embedding
 }

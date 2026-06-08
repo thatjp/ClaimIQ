@@ -36,6 +36,8 @@ export interface UpdateClaimItemInput {
   price?: number | null
   price_source?: PriceSource
   approved?: boolean
+  flagged?: boolean
+  flag_reason?: string | null
 }
 
 export async function updateClaimItem(
@@ -78,6 +80,8 @@ export async function updateClaimItem(
       price: identityChanged ? undefined : ('price' in updates ? (updates.price ?? undefined) : existing.price),
       price_source: identityChanged ? undefined : ('price_source' in updates ? updates.price_source : existing.price_source),
       approved: identityChanged ? false : ('approved' in updates ? !!updates.approved : existing.approved),
+      flagged: 'flagged' in updates ? !!updates.flagged : existing.flagged,
+      flag_reason: 'flag_reason' in updates ? (updates.flag_reason ?? undefined) : existing.flag_reason,
     }
 
     if (!identityChanged && updates.approved === true) {
@@ -105,7 +109,9 @@ export async function updateClaimItem(
         price         = ${merged.price ?? null},
         price_source  = ${merged.price_source ?? null},
         approved      = ${merged.approved ?? false},
-        approved_at   = ${approvedAt}
+        approved_at   = ${approvedAt},
+        flagged       = ${merged.flagged ?? false},
+        flag_reason   = ${merged.flag_reason ?? null}
       WHERE id = ${itemId} AND claim_id = ${claimId}
       RETURNING *
     `

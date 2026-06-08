@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ClaimIQLogo } from '@/components/ClaimIQLogo'
 
 export const metadata = {
   robots: { index: false, follow: false },
@@ -10,8 +11,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Sidebar — desktop only */}
       <aside className="hidden md:flex w-56 bg-gray-900 text-gray-100 flex-col shrink-0">
         <div className="px-5 py-5 border-b border-gray-700">
-          <h1 className="text-base font-semibold tracking-tight text-white">ClaimIQ</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Claims Assistant</p>
+          <ClaimIQLogo variant="dark" size="sm" />
+          <p className="text-xs text-gray-400 mt-2">Claims Assistant</p>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-0.5">
@@ -50,9 +51,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main content + mobile bottom nav */}
       <div className="flex flex-col flex-1 min-h-screen">
         {/* Mobile header */}
-        <header className="md:hidden flex items-center px-4 py-3 bg-gray-900 border-b border-gray-700 shrink-0">
-          <h1 className="text-sm font-semibold text-white">ClaimIQ</h1>
-          <p className="text-xs text-gray-400 ml-2">Claims Assistant</p>
+        <header className="md:hidden flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-700 shrink-0">
+          <ClaimIQLogo variant="dark" size="sm" />
+          <p className="text-xs text-gray-400">Claims Assistant</p>
         </header>
 
         <main className="flex-1 overflow-auto bg-gray-50 pb-16 md:pb-0">

@@ -14,7 +14,6 @@ export async function POST(req: Request) {
   const result = await transcribe({
     model: openai.transcription('whisper-1'),
     audio: new Uint8Array(await audio.arrayBuffer()),
-    mediaType: 'audio/webm',
     providerOptions: {
       openai: { language: 'en' },
     },
