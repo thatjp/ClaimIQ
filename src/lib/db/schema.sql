@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS claim_items (
   adjuster_notes TEXT,
   price NUMERIC,
   price_sources JSONB,
+  price_source TEXT,
   price_cached_at TIMESTAMPTZ,
   approved BOOLEAN NOT NULL DEFAULT FALSE,
   approved_at TIMESTAMPTZ,
