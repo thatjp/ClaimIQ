@@ -32,9 +32,9 @@ async function runPriceLadder(
   try {
     emit({ type: 'layer', step: traceStep('kv_cache', 'running') })
     const cacheKey = `price:${item.name}:${item.brand || ''}:${item.condition}`
-    const t0 = performance.now()
+    const t0 = Date.now()
     const cached = await kv.get<{ price: number; sources: string[]; cached_at: string }>(cacheKey)
-    const durationMs = Math.round(performance.now() - t0)
+    const durationMs = Math.round(Date.now() - t0)
 
     if (cached) {
       log('kv_cache', true, durationMs, { name: item.name, price: cached.price })
@@ -51,18 +51,18 @@ async function runPriceLadder(
   // Layer 2: pgvector similarity
   try {
     emit({ type: 'layer', step: traceStep('vector_cache', 'running') })
-    const t0 = performance.now()
+    const t0 = Date.now()
     const embedding = await embedItem(item)
-    const embedMs = Math.round(performance.now() - t0)
+    const embedMs = Math.round(Date.now() - t0)
 
-    const t1 = performance.now()
+    const t1 = Date.now()
     const { rows } = await db`
       SELECT *, embedding <=> ${JSON.stringify(embedding)}::vector AS distance
       FROM item_prices
       ORDER BY embedding <=> ${JSON.stringify(embedding)}::vector
       LIMIT 1
     `
-    const queryMs = Math.round(performance.now() - t1)
+    const queryMs = Math.round(Date.now() - t1)
     const totalMs = embedMs + queryMs
     const distance = rows[0]?.distance as number | undefined
 

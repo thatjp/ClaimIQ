@@ -148,22 +148,22 @@ export interface SerpStepOutcome {
 }
 
 export async function fetchSerpPrice(engine: SerpEngine, item: ClaimItemInput): Promise<SerpStepOutcome> {
-  const t0 = performance.now()
+  const t0 = Date.now()
 
   if (!process.env.SERP_API_KEY) {
-    return { value: null, durationMs: Math.round(performance.now() - t0), detail: 'SERP_API_KEY not configured' }
+    return { value: null, durationMs: Math.round(Date.now() - t0), detail: 'SERP_API_KEY not configured' }
   }
 
   try {
     const result = await ENGINE_FETCHERS[engine](item, process.env.SERP_API_KEY)
-    const durationMs = Math.round(performance.now() - t0)
+    const durationMs = Math.round(Date.now() - t0)
     return result
       ? { value: result, durationMs, detail: `${result.sources.length} listing${result.sources.length !== 1 ? 's' : ''}` }
       : { value: null, durationMs, detail: 'no results' }
   } catch (err) {
     return {
       value: null,
-      durationMs: Math.round(performance.now() - t0),
+      durationMs: Math.round(Date.now() - t0),
       detail: err instanceof Error ? err.message : String(err),
     }
   }
