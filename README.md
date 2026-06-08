@@ -18,12 +18,11 @@ An adjuster must then:
 
 This process is repetitive, error-prone, and slow — exactly where AI delivers compounding value.  
 
+# Solution
 
-# Solution 
+Take unstructured written or spoken comments from adjusters about the damaged items or damaged space.  Extract the relevant product fields using AI. Use those product fields such as name and brand to match against pricing data in an AI powered workflow pipeline. 
 
-Take unstructured written or spoken comments from adjusters about the damaged items or the damaged space and extract the relavant product fields using AI. Use those product fields such as name and brand to match against pricing data in an AI powered workflow pipeline.   
-  
-This automated process can manage hundreds of new line items in minuetes and hundreds of previously cached line items in seconds. ClaimIQ does this while also flagging for vauge product descriptions for further manual or AI intervention. 
+This automated process can manage hundreds of new line items in minutes and hundreds of previously cached line items in seconds. ClaimIQ does this while also flagging vague product descriptions for further manual or AI intervention. 
 
 ---
 
@@ -256,7 +255,7 @@ GET  /api/evals/results
 - **Input sanitization**: all claim text passes through `sanitizeInput` before reaching any AI model, stripping control characters and truncating to safe lengths.
 - **Prompt injection fixtures**: `prompt-injection-01` and `prompt-injection-02` in the eval suite are regression checks specifically for adversarial claim text trying to influence extraction output.
 - **Resolver write isolation**: the flagged item resolver never writes to the database. It returns a suggestion; the adjuster applies it via a separate PATCH. No AI agent has direct mutation access.
-- **Auth**: NextAuth session required for all `/app/`* routes and `/api/*` endpoints.
+- **Auth**: NextAuth session required for all `/app/`* routes and `/api/`* endpoints.
 
 ### Reliability & Failure Modes
 
@@ -293,7 +292,9 @@ The claim workspace exposes a per-item price trace showing which pricing layer r
 | Database     | Vercel Postgres + pgvector                                             | Relational claims/items + vector similarity in one service       |
 | Cache        | Vercel KV                                                              | Exact price cache (7-day TTL) + SSE-style intake progress        |
 | Pricing data | SerpAPI (eBay, Amazon, Walmart, Home Depot)                            | Real current market prices, not static datasets                  |
-|              |                                                                        |                                                     
+|              |                                                                        |                                                                  |
+
+
 ---
 
 ## Local Setup
